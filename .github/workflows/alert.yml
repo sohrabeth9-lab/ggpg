@@ -2,19 +2,15 @@ name: Binance Setup Alert Bot
 
 on:
   schedule:
-    # هر ۱۵ دقیقه اجرا میشه — چون کوچیک‌ترین تایم‌فریم چک‌شده 15m هست.
-    # هر تایم‌فریم داخل خود اسکریپت جلوی تکرار پیام رو (بر اساس candle_open_ms) می‌گیره،
-    # پس اجرا شدن مکرر مشکلی ایجاد نمی‌کنه.
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}   # امکان اجرای دستی از تب Actions
+  workflow_dispatch: {}
 
-# جلوگیری از اجرای هم‌زمان دو ران روی هم (که می‌تونه race condition روی alert_state.json بسازه)
 concurrency:
   group: binance-alert-bot
   cancel-in-progress: false
 
 permissions:
-  contents: write   # لازم برای کامیت کردن alert_state.json به‌روزشده
+  contents: write
 
 jobs:
   run-bot:
@@ -22,6 +18,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -36,17 +34,21 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TIMEFRAMES: "15m,1h,4h"
-          # QUOTE_ASSET: "USDT"
-          # TOP_N: "200"
         run: python binance_setup_alert_bot.py
 
-      # ران‌رهای گیت‌هاب اکشن ephemeral هستن (هر بار از صفر شروع میشن)، پس برای اینکه
-      # جلوی تکرار پیام روی یه کندل گرفته بشه، باید alert_state.json رو بعد از هر اجرا
-      # به‌خودِ ریپازیتوری کامیت کنیم.
       - name: Commit updated state file
         run: |
           git config user.name "alert-bot"
           git config user.email "alert-bot@users.noreply.github.com"
+
           git add alert_state.json
-          git diff --staged --quiet || git commit -m "chore: update alert state [skip ci]"
-          git push
+
+          if git diff --staged --quiet; then
+            echo "No state changes."
+            exit 0
+          fi
+
+          git commit -m "chore: update alert state [skip ci]"
+
+          git pull --rebase origin main
+          git push origin main
