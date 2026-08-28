@@ -87,7 +87,7 @@ KLINES_LIMIT = max(SMA_TREND_LEN + 5, 120)
 
 # اردربوک
 ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))       # عمق اردربوک
-ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "5"))  # چند تا سفارش بزرگ‌تر
+ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "10"))  # چند تا سفارش بزرگ‌تر
 
 # CoinGecko (مارکت‌کپ/رنک)
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
