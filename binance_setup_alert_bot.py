@@ -15,6 +15,13 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 در هر اجرای جدید، اگر سیگنال روی آخرین کندل بسته‌شده برقرار باشد،
 پیام دوباره ارسال می‌شود.
 
+--- تغییرات این نسخه (بدون تغییر منطق سیگنال‌دهی) ---
+  - محاسبه‌ی RSI (Wilder, پیش‌فرض 14 کندل) و نمایشش کنار هر پیام
+  - وقتی سیگنال لانگ است و RSI > 60، یا سیگنال شورت است و RSI < 30،
+    خط RSI بولد و با ⚠️ مشخص می‌شود
+  - نمایش تعداد کندل گذشته از بسته‌شدن کندل سیگنال تا لحظه‌ی ارسال پیام
+  - افزودن لینک مستقیم چارت TradingView برای نماد/تایم‌فریم مربوطه
+
 نصب پیش‌نیازها:
     pip install requests
 
@@ -58,6 +65,10 @@ SMA_FAST_LEN = 7
 SMA_MID_LEN = 25
 SMA_TREND_LEN = 99
 
+RSI_LEN = int(os.environ.get("RSI_LEN", "14"))
+RSI_BULLISH_HOT = 60   # اگه سیگنال لانگه و RSI بالای این عدد -> هایلایت
+RSI_BEARISH_HOT = 30   # اگه سیگنال شورته و RSI زیر این عدد -> هایلایت
+
 KLINES_LIMIT = max(SMA_TREND_LEN + 5, 120)
 
 STATE_FILE = os.path.join(
@@ -69,6 +80,13 @@ STATE_FILE = os.path.join(
 BINANCE_BASE = "https://data-api.binance.vision"
 
 REQUEST_SLEEP = 0.08
+
+# نگاشت تایم‌فریم بایننس به فرمت اینتروال TradingView
+TV_INTERVAL_MAP = {
+    "1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30",
+    "1h": "60", "2h": "120", "4h": "240", "6h": "360", "8h": "480",
+    "12h": "720", "1d": "D", "3d": "3D", "1w": "W", "1M": "M",
+}
 
 # =======================================================================
 
@@ -148,17 +166,79 @@ def sma(values, length):
     return result
 
 
+def rsi(values, length=14):
+    """
+    RSI استاندارد (روش Wilder's smoothing).
+    خروجی: لیستی هم‌طول values که ایندکس‌های قبل از آماده‌شدن None هستن.
+    """
+    n = len(values)
+    result = [None] * n
+
+    if n < length + 1:
+        return result
+
+    deltas = [values[i] - values[i - 1] for i in range(1, n)]
+    gains = [d if d > 0 else 0.0 for d in deltas]
+    losses = [-d if d < 0 else 0.0 for d in deltas]
+
+    avg_gain = sum(gains[:length]) / length
+    avg_loss = sum(losses[:length]) / length
+
+    result[length] = 100.0 if avg_loss == 0 else 100 - (100 / (1 + avg_gain / avg_loss))
+
+    for i in range(length, len(deltas)):
+        gain = gains[i]
+        loss = losses[i]
+
+        avg_gain = (avg_gain * (length - 1) + gain) / length
+        avg_loss = (avg_loss * (length - 1) + loss) / length
+
+        idx_result = i + 1
+        result[idx_result] = (
+            100.0 if avg_loss == 0
+            else 100 - (100 / (1 + avg_gain / avg_loss))
+        )
+
+    return result
+
+
+def interval_to_ms(interval: str) -> int:
+    """تبدیل رشته‌ی تایم‌فریم بایننس (مثل '15m', '4h', '1d') به میلی‌ثانیه."""
+    unit = interval[-1]
+    value = int(interval[:-1])
+
+    multipliers = {
+        "m": 60_000,
+        "h": 3_600_000,
+        "d": 86_400_000,
+        "w": 604_800_000,
+    }
+
+    return value * multipliers.get(unit, 60_000)
+
+
+def tradingview_link(symbol: str, timeframe: str) -> str:
+    """لینک مستقیم چارت TradingView برای نماد/تایم‌فریم."""
+    tv_interval = TV_INTERVAL_MAP.get(timeframe, "")
+    link = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}"
+
+    if tv_interval:
+        link += f"&interval={tv_interval}"
+
+    return link
+
+
 def evaluate_symbol(symbol: str, timeframe: str):
     """
     منطق سیگنال روی آخرین کندل بسته‌شده.
     خروجی:
-    ("bullish" | "bearish" | None, candle_open_time_ms, close_price)
+    (signal, candle_open_time_ms, close_price, rsi_value, candles_ago)
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT)
 
     if not raw or len(raw) < SMA_TREND_LEN + 2:
-        return None, None, None
+        return None, None, None, None, None
 
     # Binance kline:
     # [open_time, open, high, low, close, volume, close_time, ...]
@@ -180,18 +260,20 @@ def evaluate_symbol(symbol: str, timeframe: str):
         idx -= 1
 
     if idx < SMA_TREND_LEN:
-        return None, None, None
+        return None, None, None, None, None
 
     sma7_series = sma(closes, SMA_FAST_LEN)
     sma25_series = sma(closes, SMA_MID_LEN)
     sma99_series = sma(closes, SMA_TREND_LEN)
+    rsi_series = rsi(closes, RSI_LEN)
 
     sma7 = sma7_series[idx]
     sma25 = sma25_series[idx]
     sma99 = sma99_series[idx]
+    rsi_value = rsi_series[idx]
 
     if sma7 is None or sma25 is None or sma99 is None:
-        return None, None, None
+        return None, None, None, None, None
 
     o = opens[idx]
     h = highs[idx]
@@ -206,7 +288,7 @@ def evaluate_symbol(symbol: str, timeframe: str):
     candle_range = h - l
 
     if candle_range == 0:
-        return None, None, None
+        return None, None, None, None, None
 
     small_body = (
         body > 0
@@ -258,7 +340,13 @@ def evaluate_symbol(symbol: str, timeframe: str):
         else ("bearish" if bearish else None)
     )
 
-    return signal, open_times[idx], c
+    if signal is None:
+        return None, None, None, None, None
+
+    interval_ms = interval_to_ms(timeframe)
+    candles_ago = max(0, int((now_ms - close_times[idx]) // interval_ms))
+
+    return signal, open_times[idx], c, rsi_value, candles_ago
 
 
 def load_state():
@@ -335,12 +423,15 @@ def main():
         f"(by 24h volume) on timeframes {TIMEFRAMES}..."
     )
 
+    bullish_count = 0
+    bearish_count = 0
+
     for symbol in symbols:
 
         for timeframe in TIMEFRAMES:
 
             try:
-                signal, candle_open_ms, close_price = evaluate_symbol(
+                signal, candle_open_ms, close_price, rsi_value, candles_ago = evaluate_symbol(
                     symbol,
                     timeframe
                 )
@@ -368,28 +459,73 @@ def main():
                     tz=timezone.utc
                 ).strftime("%Y-%m-%d %H:%M UTC")
 
+                # --- خط RSI با هایلایت شرطی ---
+                is_hot = (
+                    (signal == "bullish" and rsi_value is not None and rsi_value > RSI_BULLISH_HOT)
+                    or (signal == "bearish" and rsi_value is not None and rsi_value < RSI_BEARISH_HOT)
+                )
+
+                if rsi_value is None:
+                    rsi_line = "RSI: نامشخص"
+                elif is_hot:
+                    rsi_line = f"⚠️ <b>RSI: {rsi_value:.1f}</b> ⚠️"
+                else:
+                    rsi_line = f"RSI: {rsi_value:.1f}"
+
+                # --- خط فاصله از سیگنال ---
+                if candles_ago == 0:
+                    candles_ago_str = "همین الان بسته شده"
+                else:
+                    candles_ago_str = f"{candles_ago} کندل پیش"
+
+                tv_link = tradingview_link(symbol, timeframe)
+
                 msg = (
                     f"<b>سیگنال {direction_fa}</b>\n"
                     f"نماد: <b>{symbol}</b>\n"
                     f"تایم‌فریم: {timeframe}\n"
                     f"قیمت close: {close_price}\n"
-                    f"زمان کندل: {candle_time_str}"
+                    f"زمان کندل: {candle_time_str}\n"
+                    f"{rsi_line}\n"
+                    f"فاصله از سیگنال: {candles_ago_str}\n"
+                    f"چارت: {tv_link}"
                 )
 
                 # در هر اجرای جدید، اگر سیگنال برقرار باشد
                 # دوباره پیام ارسال می‌شود.
                 send_telegram(msg)
 
+                if signal == "bullish":
+                    bullish_count += 1
+                else:
+                    bearish_count += 1
+
                 # فقط برای حفظ ساختار فایل state
                 state[key] = candle_open_ms
 
                 print(
-                    f"[SIGNAL] {symbol} {timeframe}: {signal}"
+                    f"[SIGNAL] {symbol} {timeframe}: {signal} "
+                    f"(RSI={rsi_value})"
                 )
 
             time.sleep(REQUEST_SLEEP)
 
     save_state(state)
+
+    # ---- پیام پایان اسکن ----
+    total_signals = bullish_count + bearish_count
+    finish_time_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    summary_msg = (
+        f"<b>✅ پایان اسکن</b>\n"
+        f"تاریخ و ساعت: {finish_time_str}\n"
+        f"تعداد کل سیگنال‌ها: <b>{total_signals}</b>\n"
+        f"لانگ 🟢: {bullish_count}\n"
+        f"شورت 🔴: {bearish_count}"
+    )
+
+    send_telegram(summary_msg)
+    # --------------------------
 
     print("Done.")
 
