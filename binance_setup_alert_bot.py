@@ -1,7 +1,7 @@
 """
 Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 =====================================================================
-منطق دقیقاً همون نسخه‌ی ساده‌ی اسکریپت Pine هست:
+منطق اصلی سیگنال دقیقاً همون نسخه‌ی ساده‌ی اسکریپت Pine هست:
   - بدنه کوچک (small_body)
   - سایه غالب (lower/upper dominant) با نسبت shadow_ratio به بدنه
   - close بالای/پایین هر سه SMA (7, 25, 99) به‌طور هم‌زمان
@@ -12,15 +12,19 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 فقط آخرین کندلِ "بسته‌شده"ی هر نماد در هر تایم‌فریم رو چک می‌کنه و اگه
 شرط برقرار بود، یه پیام تلگرام میفرسته.
 
-در هر اجرای جدید، اگر سیگنال روی آخرین کندل بسته‌شده برقرار باشد،
-پیام دوباره ارسال می‌شود.
-
---- تغییرات این نسخه (بدون تغییر منطق سیگنال‌دهی) ---
+--- تغییرات نسخه‌ی قبلی (بدون تغییر منطق سیگنال‌دهی) ---
   - محاسبه‌ی RSI (Wilder, پیش‌فرض 14 کندل) و نمایشش کنار هر پیام
-  - وقتی سیگنال لانگ است و RSI > 60، یا سیگنال شورت است و RSI < 30،
-    خط RSI بولد و با ⚠️ مشخص می‌شود
   - نمایش تعداد کندل گذشته از بسته‌شدن کندل سیگنال تا لحظه‌ی ارسال پیام
   - افزودن لینک مستقیم چارت TradingView برای نماد/تایم‌فریم مربوطه
+
+--- تغییرات این نسخه ---
+  - حجم معاملات (quote volume) در ۱ ساعت، ۲۴ ساعت و ۷ روز گذشته
+  - خلاصه‌ی اردربوک: مجموع حجم تجمیعی خرید/فروش + بزرگ‌ترین سفارش‌ها
+    (دیوارهای احتمالی نهنگ‌ها) به‌صورت تجمیعی + درصد عدم‌تعادل خرید/فروش
+  - مارکت‌کپ و رنک توکن (از CoinGecko، چون بایننس این داده رو نمی‌ده)
+  - جلوگیری از ارسال سیگنال تکراری: تا وقتی کندلِ سیگنال‌دهنده عوض
+    نشده (یعنی سیگنال جدیدی روی کندل بسته‌شده‌ی بعدی نیومده)، دوباره
+    پیام فرستاده نمی‌شه. این وضعیت در alert_state.json نگه‌داری میشه.
 
 نصب پیش‌نیازها:
     pip install requests
@@ -35,6 +39,14 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 برای اجرا روی GitHub Actions به README.md و
 .github/workflows/alert.yml نگاه کن — توکن‌ها به‌صورت GitHub Secrets
 ست میشن، نه توی کد.
+
+نکته درباره‌ی داده‌ی مارکت‌کپ: بایننس مارکت‌کپ/رنک نمی‌ده، پس این
+اسکریپت یک‌بار در ابتدای هر اجرا، چند صفحه از CoinGecko (API عمومی و
+رایگان) رو می‌گیره و توی حافظه نگه می‌داره. API رایگان CoinGecko
+محدودیت نرخ داره (~۵ تا ۳۰ درخواست در دقیقه بسته به شرایط)، برای
+همین بین هر صفحه یک وقفه‌ی کوتاه گذاشته شده. اگه این بخش با خطا یا
+محدودیت مواجه بشه، اسکریپت متوقف نمیشه؛ فقط اون قسمت از پیام
+"یافت نشد" نشون داده میشه.
 """
 
 import json
@@ -70,6 +82,16 @@ RSI_BULLISH_HOT = 60   # اگه سیگنال لانگه و RSI بالای این
 RSI_BEARISH_HOT = 30   # اگه سیگنال شورته و RSI زیر این عدد -> هایلایت
 
 KLINES_LIMIT = max(SMA_TREND_LEN + 5, 120)
+
+# اردربوک
+ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))       # عمق اردربوک
+ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "5"))  # چند تا سفارش بزرگ‌تر
+
+# CoinGecko (مارکت‌کپ/رنک)
+COINGECKO_BASE = "https://api.coingecko.com/api/v3"
+COINGECKO_ENABLED = os.environ.get("COINGECKO_ENABLED", "1") == "1"
+COINGECKO_PAGES = int(os.environ.get("COINGECKO_PAGES", "5"))       # هر صفحه ۲۵۰ کوین
+COINGECKO_SLEEP = float(os.environ.get("COINGECKO_SLEEP", "1.2"))
 
 STATE_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -226,6 +248,168 @@ def tradingview_link(symbol: str, timeframe: str) -> str:
         link += f"&interval={tv_interval}"
 
     return link
+
+
+def human_number(n):
+    """فرمت خوانا برای عددهای بزرگ (حجم، مارکت‌کپ و ...) با K/M/B."""
+    if n is None:
+        return "نامشخص"
+
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return "نامشخص"
+
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+
+    for unit, div in (("B", 1_000_000_000), ("M", 1_000_000), ("K", 1_000)):
+        if n >= div:
+            return f"{sign}{n / div:.2f}{unit}"
+
+    return f"{sign}{n:.2f}"
+
+
+def get_extra_volumes(symbol: str):
+    """
+    حجم (quote volume، یعنی بر حسب USDT) در بازه‌های:
+      - ۱ ساعت گذشته  -> مجموع ۶۰ کندل ۱ دقیقه‌ای
+      - ۲۴ ساعت گذشته -> از endpoint رسمی ticker/24hr بایننس
+      - ۷ روز گذشته   -> مجموع ۷ کندل روزانه (شامل کندل امروز که هنوز
+                          کامل نشده، به‌صورت تقریبی)
+    فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده، نه برای
+    همه‌ی نمادها، تا تعداد درخواست‌ها به بایننس زیاد نشه.
+    """
+    vol_1h = None
+    vol_24h = None
+    vol_7d = None
+
+    try:
+        k1m = get_klines(symbol, "1m", 60)
+        vol_1h = sum(float(k[7]) for k in k1m)  # index 7 = quote asset volume
+    except Exception as e:
+        print(f"[WARN] volume 1h {symbol}: {e}")
+
+    try:
+        url = f"{BINANCE_BASE}/api/v3/ticker/24hr"
+        resp = requests.get(url, params={"symbol": symbol}, timeout=15)
+        resp.raise_for_status()
+        vol_24h = float(resp.json().get("quoteVolume", 0))
+    except Exception as e:
+        print(f"[WARN] volume 24h {symbol}: {e}")
+
+    try:
+        k1d = get_klines(symbol, "1d", 7)
+        vol_7d = sum(float(k[7]) for k in k1d)
+    except Exception as e:
+        print(f"[WARN] volume 7d {symbol}: {e}")
+
+    return vol_1h, vol_24h, vol_7d
+
+
+def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
+    """
+    خلاصه‌ی اردربوک فعلی:
+      - مجموع حجم تجمیعی سمت خرید (bids) و فروش (asks) در عمق مشخص‌شده
+      - مجموع ارزش (notional) بزرگ‌ترین N سفارش هر سمت (دیوارهای احتمالی)
+      - درصد عدم‌تعادل خرید/فروش (imbalance)
+    فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده.
+    """
+    url = f"{BINANCE_BASE}/api/v3/depth"
+    resp = requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+
+    bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
+    asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
+
+    total_bid_qty = sum(q for _, q in bids)
+    total_ask_qty = sum(q for _, q in asks)
+
+    total_bid_notional = sum(p * q for p, q in bids)
+    total_ask_notional = sum(p * q for p, q in asks)
+
+    top_bids = sorted(bids, key=lambda x: x[1], reverse=True)[:top_n]
+    top_asks = sorted(asks, key=lambda x: x[1], reverse=True)[:top_n]
+
+    top_bids_notional = sum(p * q for p, q in top_bids)
+    top_asks_notional = sum(p * q for p, q in top_asks)
+
+    imbalance_pct = None
+    denom = total_bid_qty + total_ask_qty
+    if denom > 0:
+        imbalance_pct = (total_bid_qty - total_ask_qty) / denom * 100
+
+    return {
+        "total_bid_notional": total_bid_notional,
+        "total_ask_notional": total_ask_notional,
+        "top_bids_notional": top_bids_notional,
+        "top_asks_notional": top_asks_notional,
+        "imbalance_pct": imbalance_pct,
+    }
+
+
+def load_coingecko_market_map(pages: int = COINGECKO_PAGES):
+    """
+    نگاشت symbol (مثلاً "BTC") -> {market_cap, rank, name} با گرفتن
+    چند صفحه از coins/markets (مرتب‌شده بر اساس مارکت‌کپ نزولی).
+    فقط یک‌بار در ابتدای هر اجرای اسکریپت ساخته میشه، نه به‌ازای هر نماد.
+
+    توجه: چون چند کوین ممکنه symbol یکسان داشته باشن (مثلاً توکن‌های
+    fork‌شده یا اسکم)، در صورت تکرار symbol، اونی که رنک بهتر (عدد
+    کوچیک‌تر) داره نگه داشته میشه.
+    """
+    mapping = {}
+
+    if not COINGECKO_ENABLED:
+        return mapping
+
+    for page in range(1, pages + 1):
+        try:
+            resp = requests.get(
+                f"{COINGECKO_BASE}/coins/markets",
+                params={
+                    "vs_currency": "usd",
+                    "order": "market_cap_desc",
+                    "per_page": 250,
+                    "page": page,
+                    "sparkline": "false",
+                },
+                timeout=20,
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+
+            if not rows:
+                break
+
+            for row in rows:
+                symbol = (row.get("symbol") or "").upper()
+                if not symbol:
+                    continue
+
+                rank = row.get("market_cap_rank")
+
+                existing = mapping.get(symbol)
+                if existing and existing["rank"] is not None:
+                    if rank is None or rank >= existing["rank"]:
+                        continue
+
+                mapping[symbol] = {
+                    "market_cap": row.get("market_cap"),
+                    "rank": rank,
+                    "name": row.get("name"),
+                }
+
+            time.sleep(COINGECKO_SLEEP)
+
+        except Exception as e:
+            print(f"[WARN] CoinGecko page {page}: {e}")
+            break
+
+    print(f"[INFO] CoinGecko market map: {len(mapping)} کوین بارگذاری شد.")
+
+    return mapping
 
 
 def evaluate_symbol(symbol: str, timeframe: str):
@@ -402,6 +586,95 @@ def send_telegram(text: str):
         print(f"[TELEGRAM EXCEPTION] {e}")
 
 
+def build_signal_message(symbol, timeframe, signal, candle_open_ms, close_price,
+                          rsi_value, candles_ago, coingecko_map):
+    """پیام کامل سیگنال شامل RSI، حجم‌ها، اردربوک و مارکت‌کپ/رنک رو می‌سازه."""
+
+    direction_fa = "صعودی 🟢" if signal == "bullish" else "نزولی 🔴"
+
+    candle_time_str = datetime.fromtimestamp(
+        candle_open_ms / 1000,
+        tz=timezone.utc
+    ).strftime("%Y-%m-%d %H:%M UTC")
+
+    # --- خط RSI با هایلایت شرطی ---
+    is_hot = (
+        (signal == "bullish" and rsi_value is not None and rsi_value > RSI_BULLISH_HOT)
+        or (signal == "bearish" and rsi_value is not None and rsi_value < RSI_BEARISH_HOT)
+    )
+
+    if rsi_value is None:
+        rsi_line = "RSI: نامشخص"
+    elif is_hot:
+        rsi_line = f"⚠️ <b>RSI: {rsi_value:.1f}</b> ⚠️"
+    else:
+        rsi_line = f"RSI: {rsi_value:.1f}"
+
+    # --- خط فاصله از سیگنال ---
+    candles_ago_str = "همین الان بسته شده" if candles_ago == 0 else f"{candles_ago} کندل پیش"
+
+    # --- حجم‌ها ---
+    vol_1h, vol_24h, vol_7d = get_extra_volumes(symbol)
+    volume_lines = (
+        f"حجم ۱ ساعت: {human_number(vol_1h)}\n"
+        f"حجم ۲۴ ساعت: {human_number(vol_24h)}\n"
+        f"حجم ۷ روز: {human_number(vol_7d)}"
+    )
+
+    # --- اردربوک ---
+    try:
+        ob = get_order_book_summary(symbol)
+    except Exception as e:
+        print(f"[WARN] orderbook {symbol}: {e}")
+        ob = None
+
+    if ob:
+        imbalance_str = (
+            f"{ob['imbalance_pct']:+.1f}%"
+            if ob["imbalance_pct"] is not None
+            else "نامشخص"
+        )
+        orderbook_lines = (
+            f"اردربوک (تجمیعی، عمق {ORDERBOOK_LIMIT} سطح):\n"
+            f"  خرید: {human_number(ob['total_bid_notional'])} | "
+            f"فروش: {human_number(ob['total_ask_notional'])}\n"
+            f"  بزرگ‌ترین سفارش‌ها (Top {ORDERBOOK_WALL_TOP_N}) خرید: "
+            f"{human_number(ob['top_bids_notional'])} | فروش: "
+            f"{human_number(ob['top_asks_notional'])}\n"
+            f"  عدم‌تعادل خرید/فروش: {imbalance_str}"
+        )
+    else:
+        orderbook_lines = "اردربوک: نامشخص"
+
+    # --- مارکت‌کپ و رنک ---
+    base_asset = symbol[:-len(QUOTE_ASSET)] if symbol.endswith(QUOTE_ASSET) else symbol
+    mcap_info = coingecko_map.get(base_asset)
+
+    if mcap_info:
+        rank_str = f"#{mcap_info['rank']}" if mcap_info["rank"] else "نامشخص"
+        mcap_line = f"مارکت‌کپ: {human_number(mcap_info['market_cap'])} | رنک: {rank_str}"
+    else:
+        mcap_line = "مارکت‌کپ/رنک: یافت نشد"
+
+    tv_link = tradingview_link(symbol, timeframe)
+
+    msg = (
+        f"<b>سیگنال {direction_fa}</b>\n"
+        f"نماد: <b>{symbol}</b>\n"
+        f"تایم‌فریم: {timeframe}\n"
+        f"قیمت close: {close_price}\n"
+        f"زمان کندل: {candle_time_str}\n"
+        f"{rsi_line}\n"
+        f"فاصله از سیگنال: {candles_ago_str}\n"
+        f"{volume_lines}\n"
+        f"{orderbook_lines}\n"
+        f"{mcap_line}\n"
+        f"چارت: {tv_link}"
+    )
+
+    return msg
+
+
 def main():
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -417,6 +690,9 @@ def main():
         TOP_N
     )
 
+    # نگاشت مارکت‌کپ/رنک فقط یک‌بار در ابتدای اجرا ساخته میشه
+    coingecko_map = load_coingecko_market_map()
+
     print(
         f"[{datetime.now(timezone.utc).isoformat()}] "
         f"Checking top {len(symbols)} symbols "
@@ -425,6 +701,7 @@ def main():
 
     bullish_count = 0
     bearish_count = 0
+    duplicate_skipped = 0
 
     for symbol in symbols:
 
@@ -448,51 +725,25 @@ def main():
 
                 key = f"{symbol}_{timeframe}"
 
-                direction_fa = (
-                    "صعودی 🟢"
-                    if signal == "bullish"
-                    else "نزولی 🔴"
+                # --- جلوگیری از سیگنال تکراری ---
+                # اگر همین کندل (با همین candle_open_ms) قبلاً برای این
+                # نماد/تایم‌فریم سیگنال داده و ارسال شده، دوباره نفرست.
+                # فقط وقتی کندل سیگنال‌دهنده عوض بشه (یعنی سیگنال جدیدی
+                # روی یک کندل بسته‌شده‌ی دیگه بیاد) پیام دوباره میره.
+                if state.get(key) == candle_open_ms:
+                    duplicate_skipped += 1
+                    print(
+                        f"[SKIP-DUP] {symbol} {timeframe}: "
+                        f"سیگنال تکراریه (قبلاً روی همین کندل فرستاده شده)"
+                    )
+                    time.sleep(REQUEST_SLEEP)
+                    continue
+
+                msg = build_signal_message(
+                    symbol, timeframe, signal, candle_open_ms, close_price,
+                    rsi_value, candles_ago, coingecko_map
                 )
 
-                candle_time_str = datetime.fromtimestamp(
-                    candle_open_ms / 1000,
-                    tz=timezone.utc
-                ).strftime("%Y-%m-%d %H:%M UTC")
-
-                # --- خط RSI با هایلایت شرطی ---
-                is_hot = (
-                    (signal == "bullish" and rsi_value is not None and rsi_value > RSI_BULLISH_HOT)
-                    or (signal == "bearish" and rsi_value is not None and rsi_value < RSI_BEARISH_HOT)
-                )
-
-                if rsi_value is None:
-                    rsi_line = "RSI: نامشخص"
-                elif is_hot:
-                    rsi_line = f"⚠️ <b>RSI: {rsi_value:.1f}</b> ⚠️"
-                else:
-                    rsi_line = f"RSI: {rsi_value:.1f}"
-
-                # --- خط فاصله از سیگنال ---
-                if candles_ago == 0:
-                    candles_ago_str = "همین الان بسته شده"
-                else:
-                    candles_ago_str = f"{candles_ago} کندل پیش"
-
-                tv_link = tradingview_link(symbol, timeframe)
-
-                msg = (
-                    f"<b>سیگنال {direction_fa}</b>\n"
-                    f"نماد: <b>{symbol}</b>\n"
-                    f"تایم‌فریم: {timeframe}\n"
-                    f"قیمت close: {close_price}\n"
-                    f"زمان کندل: {candle_time_str}\n"
-                    f"{rsi_line}\n"
-                    f"فاصله از سیگنال: {candles_ago_str}\n"
-                    f"چارت: {tv_link}"
-                )
-
-                # در هر اجرای جدید، اگر سیگنال برقرار باشد
-                # دوباره پیام ارسال می‌شود.
                 send_telegram(msg)
 
                 if signal == "bullish":
@@ -500,7 +751,6 @@ def main():
                 else:
                     bearish_count += 1
 
-                # فقط برای حفظ ساختار فایل state
                 state[key] = candle_open_ms
 
                 print(
@@ -519,9 +769,10 @@ def main():
     summary_msg = (
         f"<b>✅ پایان اسکن</b>\n"
         f"تاریخ و ساعت: {finish_time_str}\n"
-        f"تعداد کل سیگنال‌ها: <b>{total_signals}</b>\n"
+        f"تعداد کل سیگنال‌های جدید: <b>{total_signals}</b>\n"
         f"لانگ 🟢: {bullish_count}\n"
-        f"شورت 🔴: {bearish_count}"
+        f"شورت 🔴: {bearish_count}\n"
+        f"تکراری (نادیده گرفته شد): {duplicate_skipped}"
     )
 
     send_telegram(summary_msg)
