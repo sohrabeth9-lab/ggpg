@@ -21,6 +21,8 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
   - حجم معاملات (quote volume) در ۱ ساعت، ۲۴ ساعت و ۷ روز گذشته
   - خلاصه‌ی اردربوک: مجموع حجم تجمیعی خرید/فروش + بزرگ‌ترین سفارش‌ها
     (دیوارهای احتمالی نهنگ‌ها) به‌صورت تجمیعی + درصد عدم‌تعادل خرید/فروش
+    + محدوده‌ی قیمتی و میانگین وزن‌دار قیمتی که بزرگ‌ترین اردرهای فعال
+    خرید/فروش توش قرار گرفتن
   - مارکت‌کپ و رنک توکن (از CoinGecko، چون بایننس این داده رو نمی‌ده)
   - جلوگیری از ارسال سیگنال تکراری: تا وقتی کندلِ سیگنال‌دهنده عوض
     نشده (یعنی سیگنال جدیدی روی کندل بسته‌شده‌ی بعدی نیومده)، دوباره
@@ -68,7 +70,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "200"))
+TOP_N = int(os.environ.get("TOP_N", "500"))
 
 SHADOW_RATIO = 1.5
 MAX_BODY_RATIO = 0.5
@@ -307,12 +309,35 @@ def get_extra_volumes(symbol: str):
     return vol_1h, vol_24h, vol_7d
 
 
+def _price_zone_stats(orders):
+    """
+    برای یک لیست سفارش [(price, qty), ...] این‌ها رو حساب می‌کنه:
+      - میانگین قیمت وزن‌دار بر اساس حجم (weighted average price)
+      - محدوده‌ی قیمتی (کمترین تا بیشترین قیمتی که این سفارش‌ها توش هستن)
+    این برای فهمیدن اینه که «بزرگ‌ترین سفارش‌ها تجمیعاً حوالی چه
+    قیمتی گذاشته شدن»، نه صرفاً حجمشون.
+    """
+    if not orders:
+        return None, None, None
+
+    total_qty = sum(q for _, q in orders)
+    if total_qty <= 0:
+        return None, None, None
+
+    weighted_avg_price = sum(p * q for p, q in orders) / total_qty
+    prices = [p for p, _ in orders]
+
+    return weighted_avg_price, min(prices), max(prices)
+
+
 def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
     """
     خلاصه‌ی اردربوک فعلی:
       - مجموع حجم تجمیعی سمت خرید (bids) و فروش (asks) در عمق مشخص‌شده
       - مجموع ارزش (notional) بزرگ‌ترین N سفارش هر سمت (دیوارهای احتمالی)
       - درصد عدم‌تعادل خرید/فروش (imbalance)
+      - محدوده‌ی قیمتی و میانگین قیمت وزن‌دار بزرگ‌ترین سفارش‌های هر سمت
+        (یعنی «بزرگ‌ترین اردرهای فعال، تجمیعاً حوالی چه قیمتی هستن»)
     فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده.
     """
     url = f"{BINANCE_BASE}/api/v3/depth"
@@ -335,6 +360,9 @@ def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int
     top_bids_notional = sum(p * q for p, q in top_bids)
     top_asks_notional = sum(p * q for p, q in top_asks)
 
+    bid_wavg_price, bid_price_min, bid_price_max = _price_zone_stats(top_bids)
+    ask_wavg_price, ask_price_min, ask_price_max = _price_zone_stats(top_asks)
+
     imbalance_pct = None
     denom = total_bid_qty + total_ask_qty
     if denom > 0:
@@ -346,6 +374,12 @@ def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int
         "top_bids_notional": top_bids_notional,
         "top_asks_notional": top_asks_notional,
         "imbalance_pct": imbalance_pct,
+        "bid_wavg_price": bid_wavg_price,
+        "bid_price_min": bid_price_min,
+        "bid_price_max": bid_price_max,
+        "ask_wavg_price": ask_wavg_price,
+        "ask_price_min": ask_price_min,
+        "ask_price_max": ask_price_max,
     }
 
 
@@ -634,6 +668,23 @@ def build_signal_message(symbol, timeframe, signal, candle_open_ms, close_price,
             if ob["imbalance_pct"] is not None
             else "نامشخص"
         )
+
+        if ob["bid_wavg_price"] is not None:
+            bid_zone_str = (
+                f"~{ob['bid_wavg_price']:g} "
+                f"(محدوده {ob['bid_price_min']:g} تا {ob['bid_price_max']:g})"
+            )
+        else:
+            bid_zone_str = "نامشخص"
+
+        if ob["ask_wavg_price"] is not None:
+            ask_zone_str = (
+                f"~{ob['ask_wavg_price']:g} "
+                f"(محدوده {ob['ask_price_min']:g} تا {ob['ask_price_max']:g})"
+            )
+        else:
+            ask_zone_str = "نامشخص"
+
         orderbook_lines = (
             f"اردربوک (تجمیعی، عمق {ORDERBOOK_LIMIT} سطح):\n"
             f"  خرید: {human_number(ob['total_bid_notional'])} | "
@@ -641,6 +692,8 @@ def build_signal_message(symbol, timeframe, signal, candle_open_ms, close_price,
             f"  بزرگ‌ترین سفارش‌ها (Top {ORDERBOOK_WALL_TOP_N}) خرید: "
             f"{human_number(ob['top_bids_notional'])} | فروش: "
             f"{human_number(ob['top_asks_notional'])}\n"
+            f"  محدوده‌ی قیمتی بزرگ‌ترین اردرهای خرید: {bid_zone_str}\n"
+            f"  محدوده‌ی قیمتی بزرگ‌ترین اردرهای فروش: {ask_zone_str}\n"
             f"  عدم‌تعادل خرید/فروش: {imbalance_str}"
         )
     else:
