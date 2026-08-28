@@ -56,7 +56,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "500"))
+TOP_N = int(os.environ.get("TOP_N", "200"))
 
 SHADOW_RATIO = 1.5
 MAX_BODY_RATIO = 0.5
