@@ -48,7 +48,7 @@ import requests
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-DEFAULT_TIMEFRAMES = ["15m", "1h", "4h"]
+DEFAULT_TIMEFRAMES = ["1h"]
 TIMEFRAMES = (
     [tf.strip() for tf in os.environ.get("TIMEFRAMES", "").split(",") if tf.strip()]
     or DEFAULT_TIMEFRAMES
