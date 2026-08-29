@@ -55,7 +55,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "200"))   # حالا یعنی: ۲۰۰ کوین برتر بر اساس رنک مارکت‌کپ
+TOP_N = int(os.environ.get("TOP_N", "1000"))   # حالا یعنی: ۲۰۰ کوین برتر بر اساس رنک مارکت‌کپ
 
 SHADOW_RATIO = 1.5
 MAX_BODY_RATIO = 0.5
@@ -64,7 +64,7 @@ SMA_FAST_LEN = 7
 SMA_MID_LEN = 25
 SMA_TREND_LEN = 99
 
-RSI_LEN = int(os.environ.get("RSI_LEN", "14"))
+RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 RSI_BULLISH_HOT = 60   # اگه سیگنال لانگه و RSI بالای این عدد -> هایلایت
 RSI_BEARISH_HOT = 30   # اگه سیگنال شورته و RSI زیر این عدد -> هایلایت
 
