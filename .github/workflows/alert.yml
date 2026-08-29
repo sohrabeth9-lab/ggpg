@@ -33,7 +33,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TIMEFRAMES: "1h"
+          TIMEFRAMES: "15m,1h,4h"
           TOP_N: "1000"
         run: python binance_setup_alert_bot.py
 
