@@ -1,24 +1,34 @@
 """
 Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 =====================================================================
-منطق اصلی سیگنال دقیقاً همون نسخه‌ی ساده‌ی اسکریپت Pine هست:
+منطق سیگنال الان دقیقاً منطبق با نسخه‌ی Pine v6 (indicator "Setup Candle
++ SMA View") هست:
   - بدنه کوچک (small_body)
   - سایه غالب (lower/upper dominant) با نسبت shadow_ratio به بدنه
   - close بالای/پایین هر سه SMA (7, 25, 99) به‌طور هم‌زمان
   - بدنه‌ی کندل نباید SMA7 رو قطع کرده باشه
+  - فاصله‌ی لبه‌ی بدنه تا SMA7 نباید بیشتر از sma7_max_dist_atr * ATR باشه
+  - فیلتر روند با ADX/DMI: اگه ADX >= آستانه -> سیگنال عادی،
+    اگه ADX < آستانه (بازار رنج) -> همون سیگنال ولی به‌عنوان "ریسکی"
+    علامت‌گذاری میشه (دقیقاً مثل رنگ زرد/نارنجی تو اسکریپت Pine)
 
 این نسخه روی چند تایم‌فریم هم‌زمان (پیش‌فرض: 15m, 1h, 4h) چک می‌کنه.
 طراحی شده برای اجرا با cron یا GitHub Actions: هر بار که اجرا میشه،
-فقط آخرین کندلِ "بسته‌شده"ی هر نماد در هر تایم‌فریم رو چک می‌کنه و اگه
-شرط برقرار بود، یه پیام تلگرام میفرسته.
+فقط آخرین کندلِ "بسته‌شده"ی هر نماد در هر تایم‌فریم رو چک می‌کنه.
 
 --- تغییرات این نسخه ---
-  - TOP_N دیگه بر اساس حجم معاملات بایننس نیست؛ بر اساس رنک واقعی
-    مارکت‌کپ (از CoinGecko) انتخاب میشه. یعنی TOP_N=200 یعنی واقعاً
-    ۲۰۰ کوین برتر بازار از نظر مارکت‌کپ، نه ۲۰۰ کوین پرحجم بایننس.
-  - پیام تلگرام جمع‌وجورتر و مرتب‌تر شده (فاصله‌گذاری + آیکون‌های کوچیک
-    به‌جای تیترهای پرکلمه)، بدون افتادن هیچ اطلاعاتی.
+  - همه‌ی سیگنال‌های یک نماد (روی هر چند تایم‌فریمی که فعال شده باشن)
+    توی یک پیام تلگرام واحد جمع میشن؛ دیگه به‌ازای هر تایم‌فریم یه
+    پیام جدا فرستاده نمیشه.
+  - منطق سیگنال کامل با اسکریپت Pine v6 هم‌سو شد: فیلتر فاصله از SMA7
+    بر مبنای ATR و فیلتر روند بر مبنای ADX/DMI (با حالت "ریسکی" برای
+    بازار رنج) اضافه شد.
+  - انتخاب نمادها دیگه بر اساس رنک مارکت‌کپ نیست؛ TOP_N (پیش‌فرض ۲۰۰)
+    یعنی ۲۰۰ کوین برتر بایننس بر اساس حجم معاملات ۲۴ ساعته (quote
+    volume)، مرتب‌شده از پرحجم‌ترین به کم‌حجم‌ترین.
   - جلوگیری از ارسال سیگنال تکراری روی یک کندل (alert_state.json)
+  - داده‌ی مارکت‌کپ از CoinGecko همچنان فقط برای نمایش تو پیام نگه
+    داشته شده (نه برای انتخاب نماد).
 
 نصب پیش‌نیازها:
     pip install requests
@@ -27,13 +37,14 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
     export TELEGRAM_BOT_TOKEN="..."
     export TELEGRAM_CHAT_ID="..."
 
-اجرای محلی با cron (مثال: هر 15 دقیقه):
-    */15 * * * * TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy /usr/bin/python3 /path/to/binance_setup_alert_bot.py >> /path/to/bot.log 2>&1
+اجرای محلی با cron (مثال: هر ۱ ساعت):
+    0 * * * * TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy /usr/bin/python3 /path/to/binance_setup_alert_bot.py >> /path/to/bot.log 2>&1
 
 نکته درباره‌ی داده‌ی مارکت‌کپ: بایننس مارکت‌کپ/رنک نمی‌ده، پس این
 اسکریپت یک‌بار در ابتدای هر اجرا، چند صفحه از CoinGecko (API عمومی و
-رایگان) رو می‌گیره. اگه این بخش با خطا یا محدودیت مواجه بشه، اسکریپت
-متوقف نمیشه؛ فقط لیست نمادهای انتخاب‌شده ممکنه کوچیک‌تر از TOP_N بشه.
+رایگان) رو فقط برای نمایش تو پیام می‌گیره. اگه این بخش با خطا یا
+محدودیت مواجه بشه، اسکریپت متوقف نمیشه؛ فقط خط مارکت‌کپ تو پیام
+"یافت نشد" نشون داده میشه.
 """
 
 import json
@@ -55,7 +66,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "1000"))   # حالا یعنی: ۲۰۰ کوین برتر بر اساس رنک مارکت‌کپ
+TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۰۰ کوین برتر بر اساس حجم معاملات بایننس
 
 SHADOW_RATIO = 1.5
 MAX_BODY_RATIO = 0.5
@@ -64,17 +75,27 @@ SMA_FAST_LEN = 7
 SMA_MID_LEN = 25
 SMA_TREND_LEN = 99
 
+# فاصله بدنه تا SMA7 (بر مبنای ATR) — دقیقاً مطابق اسکریپت Pine
+ATR_LEN = int(os.environ.get("ATR_LEN", "14"))
+SMA7_MAX_DIST_ATR = float(os.environ.get("SMA7_MAX_DIST_ATR", "1.0"))
+
+# فیلتر روند/رنج با ADX — دقیقاً مطابق اسکریپت Pine
+ADX_LEN = int(os.environ.get("ADX_LEN", "14"))
+ADX_SMOOTHING = int(os.environ.get("ADX_SMOOTHING", "14"))
+ADX_THRESHOLD = float(os.environ.get("ADX_THRESHOLD", "20.0"))
+
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 RSI_BULLISH_HOT = 60   # اگه سیگنال لانگه و RSI بالای این عدد -> هایلایت
 RSI_BEARISH_HOT = 30   # اگه سیگنال شورته و RSI زیر این عدد -> هایلایت
 
-KLINES_LIMIT = max(SMA_TREND_LEN + 5, 120)
+# باید به اندازه‌ی کافی کندل داشته باشیم برای SMA99 + وارم‌آپ ADX/ATR
+KLINES_LIMIT = max(SMA_TREND_LEN + 5, ADX_LEN + ADX_SMOOTHING + 20, 120)
 
 # اردربوک
 ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))
 ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "10"))
 
-# CoinGecko (مارکت‌کپ/رنک — الان مبنای انتخاب نمادها هم هست)
+# CoinGecko (فقط برای نمایش مارکت‌کپ/رنک تو پیام؛ در انتخاب نماد نقشی نداره)
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 COINGECKO_ENABLED = os.environ.get("COINGECKO_ENABLED", "1") == "1"
 COINGECKO_PAGES = int(os.environ.get("COINGECKO_PAGES", "5"))       # هر صفحه ۲۵۰ کوین
@@ -119,24 +140,36 @@ def get_all_symbols(quote_asset: str):
     return symbols
 
 
-def get_symbols_by_market_cap_rank(coingecko_map, quote_asset, max_rank):
+def get_top_symbols_by_volume(quote_asset: str, top_n: int):
     """
-    فقط نمادهایی که base asset‌شون تو CoinGecko رنک مارکت‌کپ <= max_rank
-    داره رو برمی‌گردونه (مرتب‌شده از رنک ۱ به بالا). این جایگزین انتخاب
-    بر اساس حجم معاملات بایننس شده، چون حجم و رنک مارکت‌کپ دو چیز جدان.
+    نمادهای معتبر اسپات با quote asset مشخص‌شده رو می‌گیره و بر اساس
+    حجم معاملات ۲۴ ساعته (quoteVolume) بایننس مرتب می‌کنه، و ۲۰۰ تای
+    برتر (یا هر عددی که TOP_N باشه) رو برمی‌گردونه. این جایگزین انتخاب
+    بر اساس رنک مارکت‌کپ شده.
     """
-    valid_symbols = get_all_symbols(quote_asset)
+    valid_symbols = set(get_all_symbols(quote_asset))
 
-    ranked = []
-    for symbol in valid_symbols:
-        base_asset = symbol[:-len(quote_asset)] if symbol.endswith(quote_asset) else symbol
-        info = coingecko_map.get(base_asset)
+    url = f"{BINANCE_BASE}/api/v3/ticker/24hr"
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
 
-        if info and info.get("rank") is not None and info["rank"] <= max_rank:
-            ranked.append((symbol, info["rank"]))
+    rows = []
+    for row in data:
+        symbol = row.get("symbol")
+        if symbol not in valid_symbols:
+            continue
 
-    ranked.sort(key=lambda x: x[1])
-    return [symbol for symbol, _ in ranked]
+        try:
+            quote_volume = float(row.get("quoteVolume", 0))
+        except (TypeError, ValueError):
+            quote_volume = 0.0
+
+        rows.append((symbol, quote_volume))
+
+    rows.sort(key=lambda x: x[1], reverse=True)
+
+    return [symbol for symbol, _ in rows[:top_n]]
 
 
 def get_klines(symbol: str, interval: str, limit: int):
@@ -200,6 +233,92 @@ def rsi(values, length=14):
         )
 
     return result
+
+
+def rma(values, length):
+    """
+    Wilder's smoothing (همون ta.rma تو Pine) — پایه‌ی ATR و ADX/DMI.
+    مقادیر ابتدایی که None هستن (وارم‌آپ) نادیده گرفته میشن؛ اولین
+    مقدار خروجی، میانگین ساده‌ی اولین `length` مقدار معتبره و بعدش
+    هر مقدار جدید با فرمول Wilder روی مقدار قبلی اعمال میشه.
+    """
+    n = len(values)
+    result = [None] * n
+
+    start = None
+    for i in range(n):
+        if values[i] is not None:
+            start = i
+            break
+
+    if start is None or (n - start) < length:
+        return result
+
+    seed = sum(values[start:start + length]) / length
+    seed_idx = start + length - 1
+    result[seed_idx] = seed
+
+    for i in range(seed_idx + 1, n):
+        result[i] = (result[i - 1] * (length - 1) + values[i]) / length
+
+    return result
+
+
+def true_range_series(highs, lows, closes):
+    """True Range کلاسیک؛ برای کندل اول چون close قبلی نداریم، فقط high-low."""
+    n = len(highs)
+    tr = [None] * n
+
+    for i in range(n):
+        if i == 0:
+            tr[i] = highs[i] - lows[i]
+        else:
+            tr[i] = max(
+                highs[i] - lows[i],
+                abs(highs[i] - closes[i - 1]),
+                abs(lows[i] - closes[i - 1]),
+            )
+
+    return tr
+
+
+def adx_series(highs, lows, closes, di_length, adx_smoothing):
+    """
+    پیاده‌سازی ta.dmi(di_length, adx_smoothing) از Pine — فقط سری ADX رو
+    برمی‌گردونه (چون به +DI/-DI جداگانه نیازی نداریم، فقط برای فیلتر
+    روند/رنج از خود ADX استفاده میشه).
+    """
+    n = len(highs)
+    plus_dm = [0.0] * n
+    minus_dm = [0.0] * n
+
+    for i in range(1, n):
+        up_move = highs[i] - highs[i - 1]
+        down_move = lows[i - 1] - lows[i]
+
+        plus_dm[i] = up_move if (up_move > down_move and up_move > 0) else 0.0
+        minus_dm[i] = down_move if (down_move > up_move and down_move > 0) else 0.0
+
+    tr = true_range_series(highs, lows, closes)
+
+    tr_rma = rma(tr, di_length)
+    plus_dm_rma = rma(plus_dm, di_length)
+    minus_dm_rma = rma(minus_dm, di_length)
+
+    dx = [None] * n
+    for i in range(n):
+        if (
+            tr_rma[i] is not None
+            and tr_rma[i] != 0
+            and plus_dm_rma[i] is not None
+            and minus_dm_rma[i] is not None
+        ):
+            plus_di = 100 * plus_dm_rma[i] / tr_rma[i]
+            minus_di = 100 * minus_dm_rma[i] / tr_rma[i]
+            denom = plus_di + minus_di
+            dx[i] = 100 * abs(plus_di - minus_di) / denom if denom != 0 else 0.0
+
+    return rma(dx, adx_smoothing)
 
 
 def interval_to_ms(interval: str) -> int:
@@ -360,7 +479,8 @@ def load_coingecko_market_map(pages: int = COINGECKO_PAGES):
     """
     نگاشت symbol (مثلاً "BTC") -> {market_cap, rank, name} با گرفتن
     چند صفحه از coins/markets (مرتب‌شده بر اساس مارکت‌کپ نزولی).
-    فقط یک‌بار در ابتدای هر اجرای اسکریپت ساخته میشه.
+    فقط یک‌بار در ابتدای هر اجرای اسکریپت ساخته میشه، و فقط برای
+    نمایش مارکت‌کپ/رنک تو پیام استفاده میشه (نه انتخاب نماد).
 
     توجه: چون چند کوین ممکنه symbol یکسان داشته باشن، در صورت تکرار
     symbol، اونی که رنک بهتر (عدد کوچیک‌تر) داره نگه داشته میشه.
@@ -420,15 +540,21 @@ def load_coingecko_market_map(pages: int = COINGECKO_PAGES):
 
 def evaluate_symbol(symbol: str, timeframe: str):
     """
-    منطق سیگنال روی آخرین کندل بسته‌شده.
-    خروجی:
-    (signal, candle_open_time_ms, close_price, rsi_value, candles_ago)
+    منطق سیگنال روی آخرین کندل بسته‌شده — دقیقاً مطابق اسکریپت Pine v6:
+      - small_body + سایه‌ی غالب با نسبت shadow_ratio
+      - close بالا/پایین هر سه SMA
+      - بدنه نباید SMA7 رو قطع کرده باشه
+      - فاصله‌ی لبه‌ی بدنه تا SMA7 <= sma7_max_dist_atr * ATR
+      - فیلتر روند با ADX: ADX >= آستانه -> سیگنال عادی،
+        ADX < آستانه -> همون سیگنال به‌صورت "ریسکی"
+
+    خروجی: dict یا None اگه سیگنالی نبود.
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT)
 
     if not raw or len(raw) < SMA_TREND_LEN + 2:
-        return None, None, None, None, None
+        return None
 
     # Binance kline:
     # [open_time, open, high, low, close, volume, close_time, ...]
@@ -450,20 +576,27 @@ def evaluate_symbol(symbol: str, timeframe: str):
         idx -= 1
 
     if idx < SMA_TREND_LEN:
-        return None, None, None, None, None
+        return None
 
     sma7_series = sma(closes, SMA_FAST_LEN)
     sma25_series = sma(closes, SMA_MID_LEN)
     sma99_series = sma(closes, SMA_TREND_LEN)
     rsi_series = rsi(closes, RSI_LEN)
+    atr_series = rma(true_range_series(highs, lows, closes), ATR_LEN)
+    adx_values = adx_series(highs, lows, closes, ADX_LEN, ADX_SMOOTHING)
 
     sma7 = sma7_series[idx]
     sma25 = sma25_series[idx]
     sma99 = sma99_series[idx]
     rsi_value = rsi_series[idx]
+    atr_val = atr_series[idx]
+    adx_val = adx_values[idx]
 
     if sma7 is None or sma25 is None or sma99 is None:
-        return None, None, None, None, None
+        return None
+
+    if atr_val is None or adx_val is None:
+        return None
 
     o = opens[idx]
     h = highs[idx]
@@ -478,7 +611,7 @@ def evaluate_symbol(symbol: str, timeframe: str):
     candle_range = h - l
 
     if candle_range == 0:
-        return None, None, None, None, None
+        return None
 
     small_body = (
         body > 0
@@ -508,35 +641,54 @@ def evaluate_symbol(symbol: str, timeframe: str):
         and sma7 <= body_high
     )
 
-    bullish = (
+    # فاصله‌ی لبه‌ی بدنه تا SMA7 — سایه مجاز به رد شدن از SMA7 هست
+    dist_bull = abs(body_low - sma7)
+    dist_bear = abs(body_high - sma7)
+
+    near_sma7_bull = dist_bull <= atr_val * SMA7_MAX_DIST_ATR
+    near_sma7_bear = dist_bear <= atr_val * SMA7_MAX_DIST_ATR
+
+    bullish_base = (
         small_body
         and lower_dominant
         and lower_shadow >= body * SHADOW_RATIO
         and above_all_sma
         and not body_crosses_sma7
+        and near_sma7_bull
     )
 
-    bearish = (
+    bearish_base = (
         small_body
         and upper_dominant
         and upper_shadow >= body * SHADOW_RATIO
         and below_all_sma
         and not body_crosses_sma7
+        and near_sma7_bear
     )
 
-    signal = (
-        "bullish"
-        if bullish
-        else ("bearish" if bearish else None)
-    )
+    trending = adx_val >= ADX_THRESHOLD
 
-    if signal is None:
-        return None, None, None, None, None
+    if bullish_base:
+        signal = "bullish"
+        risky = not trending
+    elif bearish_base:
+        signal = "bearish"
+        risky = not trending
+    else:
+        return None
 
     interval_ms = interval_to_ms(timeframe)
     candles_ago = max(0, int((now_ms - close_times[idx]) // interval_ms))
 
-    return signal, open_times[idx], c, rsi_value, candles_ago
+    return {
+        "signal": signal,
+        "risky": risky,
+        "candle_open_ms": open_times[idx],
+        "close_price": c,
+        "rsi_value": rsi_value,
+        "adx_value": adx_val,
+        "candles_ago": candles_ago,
+    }
 
 
 def load_state():
@@ -592,25 +744,41 @@ def send_telegram(text: str):
         print(f"[TELEGRAM EXCEPTION] {e}")
 
 
-def build_signal_message(symbol, timeframe, signal, candle_open_ms, close_price,
-                          rsi_value, candles_ago, coingecko_map):
-    """پیام کامل ولی جمع‌وجورتر سیگنال — همون اطلاعات قبلی، فقط مرتب‌تر."""
+def build_symbol_message(symbol, tf_results, coingecko_map):
+    """
+    پیام واحد برای یک نماد که ممکنه شامل سیگنال چند تایم‌فریم باشه
+    (مثلاً هم 15m هم 1h تو یه پیام). حجم/اردربوک/مارکت‌کپ فقط یک‌بار
+    برای کل نماد گرفته و نمایش داده میشه.
+    """
 
-    direction_fa = "صعودی 🟢" if signal == "bullish" else "نزولی 🔴"
+    lines_per_tf = []
 
-    candle_time_str = datetime.fromtimestamp(
-        candle_open_ms / 1000, tz=timezone.utc
-    ).strftime("%Y-%m-%d %H:%M UTC")
+    for tf, res in tf_results:
+        direction_fa = "صعودی 🟢" if res["signal"] == "bullish" else "نزولی 🔴"
+        risky_tag = " ⚠️ ریسکی (رنج)" if res["risky"] else ""
 
-    is_hot = (
-        (signal == "bullish" and rsi_value is not None and rsi_value > RSI_BULLISH_HOT)
-        or (signal == "bearish" and rsi_value is not None and rsi_value < RSI_BEARISH_HOT)
-    )
-    rsi_str = "نامشخص" if rsi_value is None else f"{rsi_value:.1f}"
-    if is_hot:
-        rsi_str = f"⚠️{rsi_str}⚠️"
+        candle_time_str = datetime.fromtimestamp(
+            res["candle_open_ms"] / 1000, tz=timezone.utc
+        ).strftime("%Y-%m-%d %H:%M UTC")
 
-    candles_ago_str = "الان" if candles_ago == 0 else f"{candles_ago} کندل پیش"
+        rsi_value = res["rsi_value"]
+        is_hot = (
+            (res["signal"] == "bullish" and rsi_value is not None and rsi_value > RSI_BULLISH_HOT)
+            or (res["signal"] == "bearish" and rsi_value is not None and rsi_value < RSI_BEARISH_HOT)
+        )
+        rsi_str = "نامشخص" if rsi_value is None else f"{rsi_value:.1f}"
+        if is_hot:
+            rsi_str = f"⚠️{rsi_str}⚠️"
+
+        candles_ago_str = "الان" if res["candles_ago"] == 0 else f"{res['candles_ago']} کندل پیش"
+
+        adx_str = "؟" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
+
+        lines_per_tf.append(
+            f"⏱ <b>{tf}</b>: {direction_fa}{risky_tag}\n"
+            f"   RSI {rsi_str} | ADX {adx_str} | 💰 {res['close_price']}\n"
+            f"   🕒 {candle_time_str} ({candles_ago_str})"
+        )
 
     vol_1h, vol_24h, vol_7d = get_extra_volumes(symbol)
     volume_line = (
@@ -648,12 +816,14 @@ def build_signal_message(symbol, timeframe, signal, candle_open_ms, close_price,
     else:
         mcap_line = "🏆 مارکت‌کپ/رنک: یافت نشد"
 
-    tv_link = tradingview_link(symbol, timeframe)
+    # لینک چارت رو با تایم‌فریم اولین سیگنال (معمولاً کوچیک‌ترین) می‌سازیم
+    tv_link = tradingview_link(symbol, tf_results[0][0])
+
+    tf_block = "\n\n".join(lines_per_tf)
 
     msg = (
-        f"<b>سیگنال {direction_fa}</b>\n"
-        f"<b>{symbol}</b> | {timeframe} | RSI {rsi_str}\n"
-        f"💰 {close_price}  ·  🕒 {candle_time_str} ({candles_ago_str})\n\n"
+        f"<b>سیگنال‌های {symbol}</b>\n\n"
+        f"{tf_block}\n\n"
         f"{volume_line}\n"
         f"{orderbook_line}\n"
         f"{mcap_line}\n\n"
@@ -673,34 +843,30 @@ def main():
 
     state = load_state()
 
-    # نگاشت مارکت‌کپ/رنک اول ساخته میشه، چون انتخاب نمادها بهش وابسته‌ست
+    # نگاشت مارکت‌کپ/رنک فقط برای نمایش تو پیام استفاده میشه
     coingecko_map = load_coingecko_market_map()
 
-    symbols = get_symbols_by_market_cap_rank(
-        coingecko_map,
-        QUOTE_ASSET,
-        TOP_N
-    )
+    symbols = get_top_symbols_by_volume(QUOTE_ASSET, TOP_N)
 
     print(
         f"[{datetime.now(timezone.utc).isoformat()}] "
         f"Checking top {len(symbols)} symbols "
-        f"(by CoinGecko market cap rank <= {TOP_N}) on timeframes {TIMEFRAMES}..."
+        f"(by Binance 24h volume, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}..."
     )
 
     bullish_count = 0
     bearish_count = 0
     duplicate_skipped = 0
+    messages_sent = 0
 
     for symbol in symbols:
+
+        tf_results = []
 
         for timeframe in TIMEFRAMES:
 
             try:
-                signal, candle_open_ms, close_price, rsi_value, candles_ago = evaluate_symbol(
-                    symbol,
-                    timeframe
-                )
+                result = evaluate_symbol(symbol, timeframe)
 
             except Exception as e:
                 print(
@@ -710,12 +876,12 @@ def main():
                 time.sleep(REQUEST_SLEEP)
                 continue
 
-            if signal:
+            if result:
 
                 key = f"{symbol}_{timeframe}"
 
                 # --- جلوگیری از سیگنال تکراری ---
-                if state.get(key) == candle_open_ms:
+                if state.get(key) == result["candle_open_ms"]:
                     duplicate_skipped += 1
                     print(
                         f"[SKIP-DUP] {symbol} {timeframe}: "
@@ -724,26 +890,28 @@ def main():
                     time.sleep(REQUEST_SLEEP)
                     continue
 
-                msg = build_signal_message(
-                    symbol, timeframe, signal, candle_open_ms, close_price,
-                    rsi_value, candles_ago, coingecko_map
-                )
+                tf_results.append((timeframe, result))
 
-                send_telegram(msg)
-
-                if signal == "bullish":
+                if result["signal"] == "bullish":
                     bullish_count += 1
                 else:
                     bearish_count += 1
 
-                state[key] = candle_open_ms
+                state[key] = result["candle_open_ms"]
 
                 print(
-                    f"[SIGNAL] {symbol} {timeframe}: {signal} "
-                    f"(RSI={rsi_value})"
+                    f"[SIGNAL] {symbol} {timeframe}: {result['signal']} "
+                    f"(risky={result['risky']}, RSI={result['rsi_value']}, "
+                    f"ADX={result['adx_value']})"
                 )
 
             time.sleep(REQUEST_SLEEP)
+
+        # --- یک پیام واحد برای همه‌ی سیگنال‌های این نماد ---
+        if tf_results:
+            msg = build_symbol_message(symbol, tf_results, coingecko_map)
+            send_telegram(msg)
+            messages_sent += 1
 
     save_state(state)
 
@@ -754,6 +922,7 @@ def main():
     summary_msg = (
         f"<b>✅ پایان اسکن</b>\n"
         f"🕒 {finish_time_str}\n"
+        f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
         f"مجموع سیگنال‌های جدید: <b>{total_signals}</b> "
         f"(🟢 {bullish_count} / 🔴 {bearish_count})\n"
         f"تکراری نادیده‌گرفته‌شده: {duplicate_skipped}"
