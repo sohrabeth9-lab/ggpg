@@ -2,7 +2,7 @@ name: Binance Setup Alert Bot
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -34,7 +34,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TIMEFRAMES: "15m,1h,4h"
-          TOP_N: "1000"
+          TOP_N: "200"
         run: python binance_setup_alert_bot.py
 
       - name: Commit updated state file
