@@ -1,17 +1,13 @@
 name: Binance Setup Alert Bot
-
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
-
 concurrency:
   group: binance-alert-bot
   cancel-in-progress: false
-
 permissions:
   contents: write
-
 jobs:
   run-bot:
     runs-on: ubuntu-latest
@@ -20,15 +16,12 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Run alert bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -36,7 +29,6 @@ jobs:
           TIMEFRAMES: "15m,1h,4h"
           TOP_N: "200"
         run: python binance_setup_alert_bot.py
-
       - name: Commit updated state file
         run: |
           git config user.name "alert-bot"
