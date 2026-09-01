@@ -20,12 +20,32 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
     به‌عنوان یه تگ جدا روی سیگنال گذاشته میشه (دقیقاً مثل رنگ زرد
     "No-Volume-Condition" تو اسکریپت Pine) — یعنی سیگنالی که این
     شرط رو نداشته باشه هم فرستاده میشه، ولی با یه هشدار جدا مشخص میشه.
+  - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation): دقیقاً مثل
+    دایره‌ی سبز/قرمز تاییدیه‌ی اسکریپت Pine، این هم فیلتر نیست، فقط
+    یه تگ جدا روی سیگنال میذاره که نشون میده چیدمان SMA (7/25/99)
+    تو تایم فریم بالاتر هم‌جهت با سیگنال هست یا نه.
 
 این نسخه روی چند تایم‌فریم هم‌زمان (پیش‌فرض: 15m, 1h, 4h) چک می‌کنه.
 طراحی شده برای اجرا با cron یا GitHub Actions: هر بار که اجرا میشه،
 فقط آخرین کندلِ "بسته‌شده"ی هر نماد در هر تایم‌فریم رو چک می‌کنه.
 
 --- تغییرات این نسخه (هم‌سو با آخرین ویرایش اندیکاتور) ---
+  - ترتیب ارسال پیام‌ها تغییر کرد: سیگنال‌های عادی (غیرریسکی) مثل
+    قبل، همون لحظه که پیدا میشن فرستاده میشن. سیگنال‌های ریسکی
+    (بازار رنج / risky=True) دیگه فوری فرستاده نمیشن؛ جمع میشن و
+    همه‌شون یکجا، درست قبل از پیام «پایان اسکن»، فرستاده میشن (با
+    یه پیام سرتیتر که تعداد نمادهای ریسکی رو نشون میده).
+  - اضافه شدن تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation):
+      * USE_HTF_CONFIRM: فعال/غیرفعال کردن این بخش (پیش‌فرض: فعال)
+      * AUTO_HTF: انتخاب خودکار تایم بالاتر (15m->1h, 1h->4h,
+        4h->1d, 1d->1w) - معادل auto_htf تو Pine
+      * MANUAL_HTF: تایم بالاتر دستی، وقتی AUTO_HTF خاموشه یا
+        نگاشت خودکاری براش تعریف نشده
+      * چیدمان SMA (7/25/99) روی تایم بالاتر محاسبه و با جهت
+        سیگنال مقایسه میشه؛ نتیجه فقط به‌صورت تگ (🔵 هم‌جهت /
+        ⚪ ناهم‌جهت) روی پیام گذاشته میشه، فیلتر نیست
+  - SMA7_MAX_DIST_MULT پیش‌فرضش از 1.0 به 2.0 تغییر کرد تا با
+    پیش‌فرض فعلی اسکریپت Pine (sma7_max_dist_mult) هم‌سو باشه
   - نسبت سایه به بدنه جدا شد: SHADOW_RATIO_BULL و SHADOW_RATIO_BEAR
   - چک چیدمان SMA (sma_stack_bull / sma_stack_bear) که قبلاً نبود اضافه شد
   - فاصله تا SMA7 دیگه بر مبنای ATR نیست؛ بر مبنای close و رنج خود
@@ -83,7 +103,8 @@ SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
 SMA_TREND_LEN = int(os.environ.get("SMA_TREND_LEN", "99"))
 
 # فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای رنج خود همون کندل (نه ATR)
-SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.0"))
+# پیش‌فرض هم‌سو با اسکریپت Pine فعلی (sma7_max_dist_mult = 2.0)
+SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "2.0"))
 
 # فیلتر روند/رنج با ADX — دقیقاً مطابق اسکریپت Pine
 ADX_LEN = int(os.environ.get("ADX_LEN", "14"))
@@ -94,8 +115,27 @@ RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 RSI_BULLISH_HOT = 60   # اگه سیگنال لانگه و RSI بالای این عدد -> هایلایت
 RSI_BEARISH_HOT = 30   # اگه سیگنال شورته و RSI زیر این عدد -> هایلایت
 
+# --- تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation) ---
+# معادل use_htf_confirm / auto_htf / manual_htf تو اسکریپت Pine.
+# این بخش فیلتر نیست، فقط یه تگ جدا روی سیگنال میذاره.
+USE_HTF_CONFIRM = os.environ.get("USE_HTF_CONFIRM", "1") == "1"
+AUTO_HTF = os.environ.get("AUTO_HTF", "1") == "1"
+MANUAL_HTF = os.environ.get("MANUAL_HTF", "1h")  # فقط وقتی AUTO_HTF خاموشه یا نگاشتی نداره
+
+# نگاشت خودکار تایم بالاتر (معادل auto_htf_value تو Pine):
+# 15m -> 1h, 1h -> 4h, 4h -> 1d, 1d -> 1w
+AUTO_HTF_MAP = {
+    "15m": "1h",
+    "1h": "4h",
+    "4h": "1d",
+    "1d": "1w",
+}
+
 # باید به اندازه‌ی کافی کندل داشته باشیم برای SMA99 + وارم‌آپ ADX
 KLINES_LIMIT = max(SMA_TREND_LEN + 5, ADX_LEN + ADX_SMOOTHING + 20, 120)
+
+# کندل کافی برای محاسبه‌ی چیدمان SMA روی تایم فریم بالاتر
+HTF_KLINES_LIMIT = max(SMA_TREND_LEN + 5, 110)
 
 # اردربوک
 ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))
@@ -326,6 +366,66 @@ def adx_series(highs, lows, closes, di_length, adx_smoothing):
     return rma(dx, adx_smoothing)
 
 
+def get_htf_timeframe(base_timeframe: str) -> str:
+    """
+    انتخاب تایم فریم بالاتر برای تایید هم‌جهتی SMA - معادل
+    auto_htf_value تو اسکریپت Pine:
+        15m -> 1h, 1h -> 4h, 4h -> 1d, 1d -> 1w
+    اگه AUTO_HTF خاموش باشه، یا تایم فعلی تو نگاشت نباشه، از
+    MANUAL_HTF استفاده میشه.
+    """
+    if AUTO_HTF and base_timeframe in AUTO_HTF_MAP:
+        return AUTO_HTF_MAP[base_timeframe]
+
+    return MANUAL_HTF
+
+
+def get_htf_sma_stack(symbol: str, htf_timeframe: str):
+    """
+    چیدمان SMA (7/25/99) روی تایم فریم بالاتر رو حساب می‌کنه - معادل
+    بخش request.security اسکریپت Pine (htf_sma7/25/99 و
+    htf_stack_bull/bear). فقط برای تایید جهت استفاده میشه، نه محاسبه‌ی
+    سیگنال مستقل روی تایم بالاتر.
+
+    خروجی: (htf_stack_bull, htf_stack_bear) یا None اگه دیتای کافی
+    نبود یا خطایی پیش اومد (در این حالت، تایید HTF نادیده گرفته میشه
+    و سیگنال اصلی همچنان فرستاده میشه).
+    """
+    try:
+        raw = get_klines(symbol, htf_timeframe, HTF_KLINES_LIMIT)
+    except Exception as e:
+        print(f"[WARN] HTF klines {symbol} {htf_timeframe}: {e}")
+        return None
+
+    if not raw or len(raw) < SMA_TREND_LEN + 1:
+        return None
+
+    closes = [float(k[4]) for k in raw]
+    close_times = [int(k[6]) for k in raw]
+
+    now_ms = int(time.time() * 1000)
+    idx = len(raw) - 1
+
+    # مثل تایم فعلی، اگه آخرین کندل HTF هنوز بسته نشده، قبلی رو بگیر
+    if close_times[idx] > now_ms:
+        idx -= 1
+
+    if idx < SMA_TREND_LEN:
+        return None
+
+    htf_sma7 = sma(closes, SMA_FAST_LEN)[idx]
+    htf_sma25 = sma(closes, SMA_MID_LEN)[idx]
+    htf_sma99 = sma(closes, SMA_TREND_LEN)[idx]
+
+    if htf_sma7 is None or htf_sma25 is None or htf_sma99 is None:
+        return None
+
+    htf_stack_bull = htf_sma7 > htf_sma25 and htf_sma25 > htf_sma99
+    htf_stack_bear = htf_sma7 < htf_sma25 and htf_sma25 < htf_sma99
+
+    return htf_stack_bull, htf_stack_bear
+
+
 def interval_to_ms(interval: str) -> int:
     """تبدیل رشته‌ی تایم‌فریم بایننس (مثل '15m', '4h', '1d') به میلی‌ثانیه."""
     unit = interval[-1]
@@ -554,6 +654,8 @@ def evaluate_symbol(symbol: str, timeframe: str):
       - فیلتر روند با ADX: ADX >= آستانه -> سیگنال عادی،
         ADX < آستانه -> همون سیگنال به‌صورت "ریسکی"
       - شرط حجم (حجم کندل فعلی کمتر از قبلی) فقط تگ می‌خوره، فیلتر نیست
+      - تایید هم‌جهتی با تایم بالاتر (HTF Confirmation) فقط تگ می‌خوره،
+        فیلتر نیست
 
     خروجی: dict یا None اگه سیگنالی نبود.
     """
@@ -691,6 +793,20 @@ def evaluate_symbol(symbol: str, timeframe: str):
     vol_prev = volumes[idx - 1]
     no_volume = not (vol_now < vol_prev)
 
+    # --- تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation) ---
+    # دقیقاً مثل دایره‌ی تاییدیه‌ی اسکریپت Pine: فیلتر نمی‌کنه، فقط
+    # به‌عنوان یه تگ جدا روی سیگنال گذاشته میشه.
+    htf_confirm = None
+    htf_timeframe_used = None
+
+    if USE_HTF_CONFIRM:
+        htf_timeframe_used = get_htf_timeframe(timeframe)
+        htf_stack = get_htf_sma_stack(symbol, htf_timeframe_used)
+
+        if htf_stack is not None:
+            htf_stack_bull, htf_stack_bear = htf_stack
+            htf_confirm = htf_stack_bull if signal == "bullish" else htf_stack_bear
+
     interval_ms = interval_to_ms(timeframe)
     candles_ago = max(0, int((now_ms - close_times[idx]) // interval_ms))
 
@@ -698,6 +814,8 @@ def evaluate_symbol(symbol: str, timeframe: str):
         "signal": signal,
         "risky": risky,
         "no_volume": no_volume,
+        "htf_confirm": htf_confirm,
+        "htf_timeframe": htf_timeframe_used,
         "candle_open_ms": open_times[idx],
         "close_price": c,
         "rsi_value": rsi_value,
@@ -773,6 +891,13 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
         risky_tag = " ⚠️ ریسکی (رنج)" if res["risky"] else ""
         no_volume_tag = " 🟡 بدون شرط حجم" if res["no_volume"] else ""
 
+        # تگ تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation)
+        htf_tag = ""
+        if res.get("htf_confirm") is True:
+            htf_tag = f" 🔵 هم‌جهت با {res.get('htf_timeframe')}"
+        elif res.get("htf_confirm") is False:
+            htf_tag = f" ⚪ ناهم‌جهت با {res.get('htf_timeframe')}"
+
         candle_time_str = datetime.fromtimestamp(
             res["candle_open_ms"] / 1000, tz=timezone.utc
         ).strftime("%Y-%m-%d %H:%M UTC")
@@ -791,7 +916,7 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
         adx_str = "؟" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
 
         lines_per_tf.append(
-            f"⏱ <b>{tf}</b>: {direction_fa}{risky_tag}{no_volume_tag}\n"
+            f"⏱ <b>{tf}</b>: {direction_fa}{risky_tag}{no_volume_tag}{htf_tag}\n"
             f"   RSI {rsi_str} | ADX {adx_str} | 💰 {res['close_price']}\n"
             f"   🕒 {candle_time_str} ({candles_ago_str})"
         )
@@ -867,13 +992,18 @@ def main():
     print(
         f"[{datetime.now(timezone.utc).isoformat()}] "
         f"Checking top {len(symbols)} symbols "
-        f"(by Binance 24h volume, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}..."
+        f"(by Binance 24h volume, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}... "
+        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'})"
     )
 
     bullish_count = 0
     bearish_count = 0
     duplicate_skipped = 0
     messages_sent = 0
+
+    # سیگنال‌های ریسکی (رنج) اینجا جمع میشن و یکجا، درست قبل از پیام
+    # پایان اسکن، فرستاده میشن. سیگنال‌های عادی همون لحظه فرستاده میشن.
+    risky_signals = []
 
     for symbol in symbols:
 
@@ -918,18 +1048,39 @@ def main():
                 print(
                     f"[SIGNAL] {symbol} {timeframe}: {result['signal']} "
                     f"(risky={result['risky']}, no_volume={result['no_volume']}, "
+                    f"htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
                     f"RSI={result['rsi_value']}, ADX={result['adx_value']})"
                 )
 
             time.sleep(REQUEST_SLEEP)
 
-        # --- یک پیام واحد برای همه‌ی سیگنال‌های این نماد ---
-        if tf_results:
-            msg = build_symbol_message(symbol, tf_results, coingecko_map)
+        # --- جدا کردن سیگنال‌های عادی از ریسکی ---
+        # عادی: همون لحظه، به شکل یه پیام واحد برای این نماد فرستاده میشه.
+        # ریسکی: فرستاده نمیشه، فقط جمع میشه تا آخر اسکن یکجا بره.
+        normal_tf_results = [(tf, res) for tf, res in tf_results if not res["risky"]]
+        risky_tf_results = [(tf, res) for tf, res in tf_results if res["risky"]]
+
+        if normal_tf_results:
+            msg = build_symbol_message(symbol, normal_tf_results, coingecko_map)
             send_telegram(msg)
             messages_sent += 1
 
+        if risky_tf_results:
+            risky_signals.append((symbol, risky_tf_results))
+
     save_state(state)
+
+    # ---- ارسال یکجای سیگنال‌های ریسکی، درست قبل از پیام پایان اسکن ----
+    if risky_signals:
+        send_telegram(
+            f"<b>⚠️ سیگنال‌های ریسکی این اسکن (بازار رنج)</b>\n"
+            f"تعداد: {len(risky_signals)} نماد"
+        )
+
+        for symbol, risky_tf_results in risky_signals:
+            msg = build_symbol_message(symbol, risky_tf_results, coingecko_map)
+            send_telegram(msg)
+            messages_sent += 1
 
     # ---- پیام پایان اسکن ----
     total_signals = bullish_count + bearish_count
