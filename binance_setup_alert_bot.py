@@ -30,11 +30,12 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 فقط آخرین کندلِ "بسته‌شده"ی هر نماد در هر تایم‌فریم رو چک می‌کنه.
 
 --- تغییرات این نسخه (هم‌سو با آخرین ویرایش اندیکاتور) ---
-  - ترتیب ارسال پیام‌ها تغییر کرد: سیگنال‌های عادی (غیرریسکی) مثل
-    قبل، همون لحظه که پیدا میشن فرستاده میشن. سیگنال‌های ریسکی
-    (بازار رنج / risky=True) دیگه فوری فرستاده نمیشن؛ جمع میشن و
-    همه‌شون یکجا، درست قبل از پیام «پایان اسکن»، فرستاده میشن (با
-    یه پیام سرتیتر که تعداد نمادهای ریسکی رو نشون میده).
+  - ترتیب ارسال پیام‌ها تغییر کرد: سیگنال‌های عادی (نه ریسکی، نه
+    ناهم‌جهت با HTF) مثل قبل، همون لحظه که پیدا میشن فرستاده میشن.
+    سیگنال‌هایی که ریسکی هستن (بازار رنج / risky=True) یا با تایم
+    فریم بالاتر ناهم‌جهت هستن (htf_confirm=False) دیگه فوری فرستاده
+    نمیشن؛ جمع میشن و همه‌شون یکجا، درست قبل از پیام «پایان اسکن»،
+    فرستاده میشن (با یه پیام سرتیتر که تعداد نمادها رو نشون میده).
   - اضافه شدن تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation):
       * USE_HTF_CONFIRM: فعال/غیرفعال کردن این بخش (پیش‌فرض: فعال)
       * AUTO_HTF: انتخاب خودکار تایم بالاتر (15m->1h, 1h->4h,
@@ -1001,9 +1002,10 @@ def main():
     duplicate_skipped = 0
     messages_sent = 0
 
-    # سیگنال‌های ریسکی (رنج) اینجا جمع میشن و یکجا، درست قبل از پیام
-    # پایان اسکن، فرستاده میشن. سیگنال‌های عادی همون لحظه فرستاده میشن.
-    risky_signals = []
+    # سیگنال‌های ریسکی (رنج) یا ناهم‌جهت با HTF اینجا جمع میشن و یکجا،
+    # درست قبل از پیام پایان اسکن، فرستاده میشن. سیگنال‌های عادی (نه
+    # ریسکی و نه ناهم‌جهت با HTF) همون لحظه فرستاده میشن.
+    delayed_signals = []
 
     for symbol in symbols:
 
@@ -1054,31 +1056,35 @@ def main():
 
             time.sleep(REQUEST_SLEEP)
 
-        # --- جدا کردن سیگنال‌های عادی از ریسکی ---
+        # --- جدا کردن سیگنال‌های عادی از سیگنال‌های تأخیری ---
         # عادی: همون لحظه، به شکل یه پیام واحد برای این نماد فرستاده میشه.
-        # ریسکی: فرستاده نمیشه، فقط جمع میشه تا آخر اسکن یکجا بره.
-        normal_tf_results = [(tf, res) for tf, res in tf_results if not res["risky"]]
-        risky_tf_results = [(tf, res) for tf, res in tf_results if res["risky"]]
+        # تأخیری (ریسکی یا ناهم‌جهت با HTF): فرستاده نمیشه، فقط جمع
+        # میشه تا آخر اسکن یکجا بره.
+        def _is_delayed(res):
+            return res["risky"] or res.get("htf_confirm") is False
+
+        normal_tf_results = [(tf, res) for tf, res in tf_results if not _is_delayed(res)]
+        delayed_tf_results = [(tf, res) for tf, res in tf_results if _is_delayed(res)]
 
         if normal_tf_results:
             msg = build_symbol_message(symbol, normal_tf_results, coingecko_map)
             send_telegram(msg)
             messages_sent += 1
 
-        if risky_tf_results:
-            risky_signals.append((symbol, risky_tf_results))
+        if delayed_tf_results:
+            delayed_signals.append((symbol, delayed_tf_results))
 
     save_state(state)
 
-    # ---- ارسال یکجای سیگنال‌های ریسکی، درست قبل از پیام پایان اسکن ----
-    if risky_signals:
+    # ---- ارسال یکجای سیگنال‌های تأخیری (ریسکی یا ناهم‌جهت با HTF) ----
+    if delayed_signals:
         send_telegram(
-            f"<b>⚠️ سیگنال‌های ریسکی این اسکن (بازار رنج)</b>\n"
-            f"تعداد: {len(risky_signals)} نماد"
+            f"<b>⚠️ سیگنال‌های ریسکی / ناهم‌جهت با HTF این اسکن</b>\n"
+            f"تعداد: {len(delayed_signals)} نماد"
         )
 
-        for symbol, risky_tf_results in risky_signals:
-            msg = build_symbol_message(symbol, risky_tf_results, coingecko_map)
+        for symbol, delayed_tf_results in delayed_signals:
+            msg = build_symbol_message(symbol, delayed_tf_results, coingecko_map)
             send_telegram(msg)
             messages_sent += 1
 
