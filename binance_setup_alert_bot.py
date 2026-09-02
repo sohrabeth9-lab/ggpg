@@ -156,6 +156,29 @@ STATE_FILE = os.path.join(
 # API عمومی دیتای Binance
 BINANCE_BASE = "https://data-api.binance.vision"
 
+# --- پشتیبانی چند صرافی (Multi-Exchange Fallback) ---
+# اولویت پیش‌فرض: بایننس اول، اگه بایننس جواب نداد یا خطا داد (مثلاً
+# ریت‌لیمیت یا مسدودی جغرافیایی)، میره سراغ MEXC و بعد KuCoin.
+# این فقط برای گرفتن دیتای کندل/تیکر/اردربوک هست؛ به‌هیچ‌وجه منطق
+# سیگنال یا شرط‌ها فرق نمی‌کنه، فقط منبع دیتا عوض میشه.
+EXCHANGE_PRIORITY = (
+    [ex.strip().lower() for ex in os.environ.get("EXCHANGE_PRIORITY", "binance,mexc,kucoin").split(",") if ex.strip()]
+    or ["binance", "mexc", "kucoin"]
+)
+
+MEXC_BASE = "https://api.mexc.com"
+KUCOIN_BASE = "https://api.kucoin.com"
+
+# نگاشت اینتروال هر تایم‌فریم به فرمت مخصوص هر صرافی
+MEXC_INTERVAL_MAP = {
+    "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+    "1h": "60m", "4h": "4h", "1d": "1d", "1w": "1W",
+}
+KUCOIN_INTERVAL_MAP = {
+    "1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min",
+    "1h": "1hour", "4h": "4hour", "1d": "1day", "1w": "1week",
+}
+
 REQUEST_SLEEP = 0.08
 
 # نگاشت تایم‌فریم بایننس به فرمت اینتروال TradingView
@@ -168,8 +191,16 @@ TV_INTERVAL_MAP = {
 # =======================================================================
 
 
-def get_all_symbols(quote_asset: str):
-    """همه‌ی نمادهای اسپات فعال با quote asset مشخص‌شده رو برمی‌گردونه."""
+def to_kucoin_symbol(symbol: str, quote_asset: str) -> str:
+    """تبدیل نماد سبک بایننس ('BTCUSDT') به فرمت کوکوین ('BTC-USDT')."""
+    if symbol.endswith(quote_asset):
+        base = symbol[: -len(quote_asset)]
+        return f"{base}-{quote_asset}"
+
+    return symbol
+
+
+def _get_all_symbols_binance(quote_asset: str):
     url = f"{BINANCE_BASE}/api/v3/exchangeInfo"
     resp = requests.get(url, timeout=15)
     resp.raise_for_status()
@@ -187,23 +218,121 @@ def get_all_symbols(quote_asset: str):
     return symbols
 
 
-def get_top_symbols_by_volume(quote_asset: str, top_n: int):
-    """
-    نمادهای معتبر اسپات با quote asset مشخص‌شده رو می‌گیره و بر اساس
-    حجم معاملات ۲۴ ساعته (quoteVolume) بایننس مرتب می‌کنه، و ۲۰۰ تای
-    برتر (یا هر عددی که TOP_N باشه) رو برمی‌گردونه.
-    """
-    valid_symbols = set(get_all_symbols(quote_asset))
-
-    url = f"{BINANCE_BASE}/api/v3/ticker/24hr"
-    resp = requests.get(url, timeout=20)
+def _get_all_symbols_mexc(quote_asset: str):
+    url = f"{MEXC_BASE}/api/v3/exchangeInfo"
+    resp = requests.get(url, timeout=15)
     resp.raise_for_status()
     data = resp.json()
 
+    symbols = []
+    for s in data.get("symbols", []):
+        if (
+            s.get("status") == "1" or s.get("status") == 1 or s.get("isSpotTradingAllowed", True)
+        ) and s.get("quoteAsset") == quote_asset:
+            symbols.append(s["symbol"])
+
+    return symbols
+
+
+def get_all_symbols(quote_asset: str):
+    """
+    همه‌ی نمادهای اسپات فعال با quote asset مشخص‌شده رو برمی‌گردونه.
+    اولویت با بایننسه؛ اگه بایننس خطا داد (مثلاً مسدودی جغرافیایی/
+    ریت‌لیمیت)، میره سراغ MEXC که فرمت نماد‌هاش دقیقاً مثل بایننسه
+    (بدون خط تیره)، پس نیازی به تبدیل نداره.
+    """
+    errors = []
+
+    for exchange in EXCHANGE_PRIORITY:
+        try:
+            if exchange == "binance":
+                symbols = _get_all_symbols_binance(quote_asset)
+            elif exchange == "mexc":
+                symbols = _get_all_symbols_mexc(quote_asset)
+            else:
+                # کوکوین برای انتخاب یونیورس نماد استفاده نمیشه چون
+                # فرمت نمادش با بقیه فرق داره؛ فقط برای دیتای کندل/
+                # اردربوک به‌عنوان آخرین fallback به کار میره.
+                continue
+
+            if symbols:
+                if exchange != "binance":
+                    print(f"[INFO] لیست نمادها از {exchange} گرفته شد (fallback).")
+                return symbols
+
+        except Exception as e:
+            errors.append(f"{exchange}: {e}")
+            print(f"[WARN] get_all_symbols روی {exchange} شکست خورد: {e}")
+
+    print(f"[ERROR] گرفتن لیست نمادها از همه‌ی صرافی‌ها شکست خورد: {errors}")
+    return []
+
+
+def _get_ticker_24hr_map_binance():
+    url = f"{BINANCE_BASE}/api/v3/ticker/24hr"
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    return {row.get("symbol"): row for row in resp.json()}
+
+
+def _get_ticker_24hr_map_mexc():
+    url = f"{MEXC_BASE}/api/v3/ticker/24hr"
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    return {row.get("symbol"): row for row in resp.json()}
+
+
+def get_top_symbols_by_volume(quote_asset: str, top_n: int):
+    """
+    نمادهای معتبر اسپات با quote asset مشخص‌شده رو می‌گیره و بر اساس
+    حجم معاملات ۲۴ ساعته (quoteVolume) مرتب می‌کنه، و ۲۰۰ تای برتر
+    (یا هر عددی که TOP_N باشه) رو برمی‌گردونه.
+    اولویت با بایننسه؛ فقط اگه بایننس کلاً در دسترس نبود میره سراغ
+    MEXC (چون یونیورس نماد هم از همون منبع باید بیاد تا سازگار بمونه).
+    """
+    valid_symbols = get_all_symbols(quote_asset)
+
+    if not valid_symbols:
+        return []
+
+    valid_symbols_set = set(valid_symbols)
+
+    ticker_fetchers = [
+        ("binance", _get_ticker_24hr_map_binance),
+        ("mexc", _get_ticker_24hr_map_mexc),
+    ]
+
+    # فقط صرافی‌هایی که تو EXCHANGE_PRIORITY هستن رو امتحان کن، به
+    # همون ترتیب اولویت
+    ordered_fetchers = [
+        (name, fn) for name, fn in ticker_fetchers if name in EXCHANGE_PRIORITY
+    ] or ticker_fetchers
+
+    ticker_map = None
+    used_exchange = None
+
+    for name, fetcher in ordered_fetchers:
+        try:
+            candidate_map = fetcher()
+            # فقط نمادهایی که تو یونیورس معتبرمون هستن رو نگه می‌داریم
+            if any(sym in valid_symbols_set for sym in candidate_map):
+                ticker_map = candidate_map
+                used_exchange = name
+                break
+        except Exception as e:
+            print(f"[WARN] ticker/24hr روی {name} شکست خورد: {e}")
+
+    if ticker_map is None:
+        print("[ERROR] گرفتن حجم ۲۴ ساعته از همه‌ی صرافی‌ها شکست خورد.")
+        return valid_symbols[:top_n]
+
+    if used_exchange and used_exchange != "binance":
+        print(f"[INFO] حجم ۲۴ ساعته از {used_exchange} گرفته شد (fallback).")
+
     rows = []
-    for row in data:
-        symbol = row.get("symbol")
-        if symbol not in valid_symbols:
+    for symbol in valid_symbols:
+        row = ticker_map.get(symbol)
+        if not row:
             continue
 
         try:
@@ -218,20 +347,123 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
     return [symbol for symbol, _ in rows[:top_n]]
 
 
-def get_klines(symbol: str, interval: str, limit: int):
+def _get_klines_binance(symbol: str, interval: str, limit: int):
     """کندل‌های خام رو از بایننس می‌گیره."""
     url = f"{BINANCE_BASE}/api/v3/klines"
-
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit
-    }
+    params = {"symbol": symbol, "interval": interval, "limit": limit}
 
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
 
     return resp.json()
+
+
+def _get_klines_mexc(symbol: str, interval: str, limit: int):
+    """
+    کندل‌های خام رو از MEXC می‌گیره. MEXC برای اسپات دقیقاً از همون
+    فرمت نماد (بدون خط تیره) و همون شکل خروجی کندل بایننس استفاده
+    می‌کنه، فقط اسم بعضی اینتروال‌ها فرق داره (مثلاً "1h" -> "60m").
+    """
+    mexc_interval = MEXC_INTERVAL_MAP.get(interval)
+    if not mexc_interval:
+        raise ValueError(f"اینتروال {interval} برای MEXC پشتیبانی نمیشه")
+
+    url = f"{MEXC_BASE}/api/v3/klines"
+    params = {"symbol": symbol, "interval": mexc_interval, "limit": limit}
+
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+
+    return resp.json()
+
+
+def _get_klines_kucoin(symbol: str, interval: str, limit: int):
+    """
+    کندل‌های خام رو از کوکوین می‌گیره و به همون فرمت لیست-از-لیست
+    بایننس تبدیل می‌کنه: [open_time_ms, open, high, low, close,
+    volume, close_time_ms, quote_volume, ...]
+    کوکوین کندل‌ها رو به‌ترتیب نزولی (جدیدترین اول) و با ترتیب فیلدهای
+    [time, open, close, high, low, volume, turnover] برمی‌گردونه، پس
+    باید هم ترتیب فیلدها هم ترتیب زمانی رو اصلاح کنیم.
+    """
+    kucoin_type = KUCOIN_INTERVAL_MAP.get(interval)
+    if not kucoin_type:
+        raise ValueError(f"اینتروال {interval} برای KuCoin پشتیبانی نمیشه")
+
+    kucoin_symbol = to_kucoin_symbol(symbol, QUOTE_ASSET)
+    interval_sec = interval_to_ms(interval) // 1000
+    end_at = int(time.time())
+    start_at = end_at - interval_sec * (limit + 2)
+
+    url = f"{KUCOIN_BASE}/api/v1/market/candles"
+    params = {
+        "type": kucoin_type,
+        "symbol": kucoin_symbol,
+        "startAt": start_at,
+        "endAt": end_at,
+    }
+
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    if payload.get("code") != "200000":
+        raise RuntimeError(f"KuCoin error: {payload.get('code')} {payload.get('msg')}")
+
+    raw = payload.get("data", [])
+
+    # کوکوین جدیدترین رو اول میده؛ برعکسش می‌کنیم تا صعودی (قدیمی -> جدید) بشه
+    raw = list(reversed(raw))
+
+    normalized = []
+    for row in raw:
+        # row: [time, open, close, high, low, volume, turnover]
+        open_time_ms = int(float(row[0])) * 1000
+        o, cl, hi, lo, vol, turnover = (float(x) for x in row[1:7])
+        close_time_ms = open_time_ms + interval_sec * 1000 - 1
+
+        normalized.append([
+            open_time_ms, o, hi, lo, cl, vol, close_time_ms, turnover
+        ])
+
+    return normalized[-limit:] if limit else normalized
+
+
+_KLINES_FETCHERS = {
+    "binance": _get_klines_binance,
+    "mexc": _get_klines_mexc,
+    "kucoin": _get_klines_kucoin,
+}
+
+
+def get_klines(symbol: str, interval: str, limit: int):
+    """
+    کندل‌ها رو به ترتیب اولویت EXCHANGE_PRIORITY می‌گیره (پیش‌فرض:
+    بایننس -> MEXC -> KuCoin). اگه صرافی اول خطا بده یا دیتا برنگردونه
+    (ریت‌لیمیت، قطعی، مسدودی جغرافیایی و ...)، خودکار میره سراغ صرافی
+    بعدی. منطق سیگنال و شرط‌ها کاملاً مستقل از این بخشه و فرقی نمی‌کنه
+    دیتا از کدوم صرافی اومده باشه.
+    """
+    errors = []
+
+    for exchange in EXCHANGE_PRIORITY:
+        fetcher = _KLINES_FETCHERS.get(exchange)
+        if not fetcher:
+            continue
+
+        try:
+            data = fetcher(symbol, interval, limit)
+
+            if data:
+                return data
+
+        except Exception as e:
+            errors.append(f"{exchange}: {e}")
+            continue
+
+    raise RuntimeError(
+        f"گرفتن کندل {symbol}/{interval} از همه‌ی صرافی‌ها ({EXCHANGE_PRIORITY}) شکست خورد: {errors}"
+    )
 
 
 def sma(values, length):
@@ -473,6 +705,45 @@ def human_number(n):
     return f"{sign}{n:.2f}"
 
 
+def get_ticker_24hr_quote_volume(symbol: str):
+    """
+    حجم ۲۴ ساعته (بر حسب quote asset) یک نماد رو می‌گیره، با همون
+    اولویت EXCHANGE_PRIORITY. KuCoin هم برای این بخش پشتیبانی میشه
+    چون فقط برای نمایش تو پیامه، نه انتخاب نماد.
+    """
+    errors = []
+
+    for exchange in EXCHANGE_PRIORITY:
+        try:
+            if exchange == "binance":
+                url = f"{BINANCE_BASE}/api/v3/ticker/24hr"
+                resp = requests.get(url, params={"symbol": symbol}, timeout=15)
+                resp.raise_for_status()
+                return float(resp.json().get("quoteVolume", 0))
+
+            if exchange == "mexc":
+                url = f"{MEXC_BASE}/api/v3/ticker/24hr"
+                resp = requests.get(url, params={"symbol": symbol}, timeout=15)
+                resp.raise_for_status()
+                return float(resp.json().get("quoteVolume", 0))
+
+            if exchange == "kucoin":
+                kucoin_symbol = to_kucoin_symbol(symbol, QUOTE_ASSET)
+                url = f"{KUCOIN_BASE}/api/v1/market/stats"
+                resp = requests.get(url, params={"symbol": kucoin_symbol}, timeout=15)
+                resp.raise_for_status()
+                payload = resp.json()
+                if payload.get("code") != "200000":
+                    raise RuntimeError(f"KuCoin error: {payload.get('code')}")
+                return float(payload.get("data", {}).get("volValue", 0))
+
+        except Exception as e:
+            errors.append(f"{exchange}: {e}")
+            continue
+
+    raise RuntimeError(f"گرفتن حجم ۲۴ ساعته {symbol} از همه‌ی صرافی‌ها شکست خورد: {errors}")
+
+
 def get_extra_volumes(symbol: str):
     """
     حجم (quote volume، یعنی بر حسب USDT) در بازه‌های:
@@ -494,10 +765,7 @@ def get_extra_volumes(symbol: str):
         print(f"[WARN] volume 1h {symbol}: {e}")
 
     try:
-        url = f"{BINANCE_BASE}/api/v3/ticker/24hr"
-        resp = requests.get(url, params={"symbol": symbol}, timeout=15)
-        resp.raise_for_status()
-        vol_24h = float(resp.json().get("quoteVolume", 0))
+        vol_24h = get_ticker_24hr_quote_volume(symbol)
     except Exception as e:
         print(f"[WARN] volume 24h {symbol}: {e}")
 
@@ -529,6 +797,44 @@ def _price_zone_stats(orders):
     return weighted_avg_price, min(prices), max(prices)
 
 
+def _get_depth_binance(symbol: str, limit: int):
+    url = f"{BINANCE_BASE}/api/v3/depth"
+    resp = requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("bids", []), data.get("asks", [])
+
+
+def _get_depth_mexc(symbol: str, limit: int):
+    url = f"{MEXC_BASE}/api/v3/depth"
+    # MEXC فقط از این مقادیر مشخص برای limit پشتیبانی می‌کنه
+    allowed = [5, 10, 20, 50, 100, 500, 1000]
+    mexc_limit = min(allowed, key=lambda x: abs(x - limit))
+    resp = requests.get(url, params={"symbol": symbol, "limit": mexc_limit}, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("bids", []), data.get("asks", [])
+
+
+def _get_depth_kucoin(symbol: str, limit: int):
+    kucoin_symbol = to_kucoin_symbol(symbol, QUOTE_ASSET)
+    url = f"{KUCOIN_BASE}/api/v1/market/orderbook/level2_100"
+    resp = requests.get(url, params={"symbol": kucoin_symbol}, timeout=15)
+    resp.raise_for_status()
+    payload = resp.json()
+    if payload.get("code") != "200000":
+        raise RuntimeError(f"KuCoin error: {payload.get('code')}")
+    data = payload.get("data", {})
+    return data.get("bids", []), data.get("asks", [])
+
+
+_DEPTH_FETCHERS = {
+    "binance": _get_depth_binance,
+    "mexc": _get_depth_mexc,
+    "kucoin": _get_depth_kucoin,
+}
+
+
 def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
     """
     خلاصه‌ی اردربوک فعلی:
@@ -536,15 +842,31 @@ def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int
       - مجموع ارزش (notional) بزرگ‌ترین N سفارش هر سمت (دیوارهای احتمالی)
       - درصد عدم‌تعادل خرید/فروش (imbalance)
       - محدوده‌ی قیمتی و میانگین قیمت وزن‌دار بزرگ‌ترین سفارش‌های هر سمت
-    فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده.
+    فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده. اردربوک هم
+    مثل کندل‌ها به ترتیب EXCHANGE_PRIORITY از صرافی‌های مختلف گرفته میشه.
     """
-    url = f"{BINANCE_BASE}/api/v3/depth"
-    resp = requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
+    errors = []
+    raw_bids, raw_asks = None, None
 
-    bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
-    asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
+    for exchange in EXCHANGE_PRIORITY:
+        fetcher = _DEPTH_FETCHERS.get(exchange)
+        if not fetcher:
+            continue
+
+        try:
+            raw_bids, raw_asks = fetcher(symbol, limit)
+            if raw_bids or raw_asks:
+                break
+        except Exception as e:
+            errors.append(f"{exchange}: {e}")
+            raw_bids, raw_asks = None, None
+            continue
+
+    if not raw_bids and not raw_asks:
+        raise RuntimeError(f"گرفتن اردربوک {symbol} از همه‌ی صرافی‌ها شکست خورد: {errors}")
+
+    bids = [(float(p), float(q)) for p, q in raw_bids]
+    asks = [(float(p), float(q)) for p, q in raw_asks]
 
     total_bid_qty = sum(q for _, q in bids)
     total_ask_qty = sum(q for _, q in asks)
@@ -888,7 +1210,8 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
     lines_per_tf = []
 
     for tf, res in tf_results:
-        direction_fa = "صعودی 🟢" if res["signal"] == "bullish" else "نزولی 🔴"
+        is_bullish = res["signal"] == "bullish"
+        direction_fa = "صعودی 🟢 #long" if is_bullish else "نزولی 🔴 #short"
         risky_tag = " ⚠️ ریسکی (رنج)" if res["risky"] else ""
         no_volume_tag = " 🟡 بدون شرط حجم" if res["no_volume"] else ""
 
@@ -898,6 +1221,15 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
             htf_tag = f" 🔵 هم‌جهت با {res.get('htf_timeframe')}"
         elif res.get("htf_confirm") is False:
             htf_tag = f" ⚪ ناهم‌جهت با {res.get('htf_timeframe')}"
+
+        # همه‌ی شرایط رو داره: ریسکی نیست، شرط حجم رو داره، و اگه
+        # تایید HTF فعاله، هم‌جهت هم تایید شده -> #pass
+        is_full_pass = (
+            not res["risky"]
+            and not res["no_volume"]
+            and res.get("htf_confirm") is True
+        )
+        pass_tag = " ✅ #pass" if is_full_pass else ""
 
         candle_time_str = datetime.fromtimestamp(
             res["candle_open_ms"] / 1000, tz=timezone.utc
@@ -917,7 +1249,7 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
         adx_str = "؟" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
 
         lines_per_tf.append(
-            f"⏱ <b>{tf}</b>: {direction_fa}{risky_tag}{no_volume_tag}{htf_tag}\n"
+            f"⏱ <b>{tf}</b>: {direction_fa}{risky_tag}{no_volume_tag}{htf_tag}{pass_tag}\n"
             f"   RSI {rsi_str} | ADX {adx_str} | 💰 {res['close_price']}\n"
             f"   🕒 {candle_time_str} ({candles_ago_str})"
         )
@@ -994,11 +1326,13 @@ def main():
         f"[{datetime.now(timezone.utc).isoformat()}] "
         f"Checking top {len(symbols)} symbols "
         f"(by Binance 24h volume, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}... "
-        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'})"
+        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'}, "
+        f"exchanges: {' -> '.join(EXCHANGE_PRIORITY)})"
     )
 
     bullish_count = 0
     bearish_count = 0
+    pass_count = 0
     duplicate_skipped = 0
     messages_sent = 0
 
@@ -1044,6 +1378,13 @@ def main():
                     bullish_count += 1
                 else:
                     bearish_count += 1
+
+                if (
+                    not result["risky"]
+                    and not result["no_volume"]
+                    and result.get("htf_confirm") is True
+                ):
+                    pass_count += 1
 
                 state[key] = result["candle_open_ms"]
 
@@ -1097,7 +1438,8 @@ def main():
         f"🕒 {finish_time_str}\n"
         f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
         f"مجموع سیگنال‌های جدید: <b>{total_signals}</b> "
-        f"(🟢 {bullish_count} / 🔴 {bearish_count})\n"
+        f"(🟢 {bullish_count} #long / 🔴 {bearish_count} #short)\n"
+        f"✅ #pass (همه‌ی شرایط کامل): <b>{pass_count}</b>\n"
         f"تکراری نادیده‌گرفته‌شده: {duplicate_skipped}"
     )
 
