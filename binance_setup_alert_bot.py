@@ -1,6 +1,6 @@
 """
-Setup Candle + SMA Alert Bot (Binance FUTURES -> Telegram) — Multi-Timeframe
-=============================================================================
+Setup Candle + SMA Alert Bot (MEXC FUTURES -> Telegram) — Multi-Timeframe
+============================================================================
 منطق سیگنال دقیقاً منطبق با آخرین نسخه‌ی اسکریپت Pine v6
 (indicator "Setup Candle + SMA View") هست:
   - بدنه کوچک (small_body)
@@ -19,12 +19,31 @@ Setup Candle + SMA Alert Bot (Binance FUTURES -> Telegram) — Multi-Timeframe
     نه فیلتر
 
 --- تغییر این نسخه ---
-داده دیگه از بایننس اسپات گرفته نمیشه؛ همه‌چیز از بایننس FUTURES
-(USDT-M Perpetual, fapi.binance.com) میاد. پشتیبانی MEXC و KuCoin
-(هم برای لیست نمادها، هم کندل‌ها، هم اردربوک) کاملاً حذف شده و
-اسکریپت فقط به یک صرافی (بایننس فیوچرز) وصل میشه. اگه درخواستی به
-بایننس فیوچرز شکست بخوره، دیگه fallback ای وجود نداره و همون خطا
-لاگ میشه.
+منبع داده از بایننس فیوچرز به MEXC فیوچرز (contract.mexc.com,
+USDT-M Perpetual) عوض شد؛ چون بایننس فیوچرز خیلی از آی‌پی‌ها/سرورها
+رو با خطای 451 (محدودیت جغرافیایی) بلاک می‌کنه و ساختار دیتای MEXC
+فیوچرز (OHLCV کندل، اردربوک، ۲۴ساعته) از نظر محتوا تفاوت معناداری
+با بایننس نداره. هیچ صرافی دیگه‌ای (بایننس/کوکوین) دیگه استفاده
+نمیشه — فقط MEXC فیوچرز، بدون fallback.
+
+نکات فنی مهم درباره‌ی MEXC فیوچرز:
+  - فرمت نماد تو MEXC با آندرلاین جداست ("BTC_USDT")؛ داخل اسکریپت
+    نمادها همچنان به فرمت بدون آندرلاین ("BTCUSDT") نگه داشته میشن
+    (برای هشتگ پیام، لینک TradingView و فایل state) و فقط موقع صدا
+    زدن API به فرمت MEXC تبدیل میشن.
+  - کندل‌های MEXC ستونی (column-oriented) برمی‌گردن، نه ردیفی؛ اینجا
+    نرمالایز میشن به همون فرمت آرایه‌ای بایننس که بقیه‌ی کد ازش
+    استفاده می‌کنه: [open_time_ms, open, high, low, close, vol,
+    close_time_ms, quote_turnover].
+  - "amount" (گردش مالی/ترنوور به quote asset) هم‌جای quoteVolume
+    بایننس استفاده میشه (برای Vol 1h/24h/7d تو پیام).
+  - "vol" (حجم به تعداد قرارداد) هم‌جای base volume بایننس استفاده
+    میشه؛ چون این مقدار فقط برای مقایسه‌ی نسبی کندل فعلی با قبلی
+    (no_volume tag) به کار میره، نه مقدار مطلق، اختلاف واحد مشکلی
+    ایجاد نمی‌کنه.
+  - سقف نرخ درخواست MEXC فیوچرز نسبت به بایننس تنگ‌تره (kline: ۲۰
+    درخواست/۲ ثانیه، ticker/depth: ۱۰ درخواست/۲ ثانیه)، پس
+    REQUEST_SLEEP بالاتر از قبل تنظیم شده.
 
 نصب پیش‌نیازها:
     pip install requests
@@ -34,9 +53,9 @@ Setup Candle + SMA Alert Bot (Binance FUTURES -> Telegram) — Multi-Timeframe
     export TELEGRAM_CHAT_ID="..."
 
 اجرای محلی با cron (مثال: هر ۱۵ دقیقه):
-    */15 * * * * TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy /usr/bin/python3 /path/to/binance_futures_setup_alert_bot.py >> /path/to/bot.log 2>&1
+    */15 * * * * TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy /usr/bin/python3 /path/to/mexc_futures_setup_alert_bot.py >> /path/to/bot.log 2>&1
 
-نکته درباره‌ی داده‌ی مارکت‌کپ: بایننس مارکت‌کپ/رنک نمی‌ده، پس این
+نکته درباره‌ی داده‌ی مارکت‌کپ: MEXC مارکت‌کپ/رنک نمی‌ده، پس این
 اسکریپت یک‌بار در ابتدای هر اجرا، چند صفحه از CoinGecko (API عمومی و
 رایگان) رو فقط برای نمایش تو پیام می‌گیره. اگه این بخش با خطا یا
 محدودیت مواجه بشه، اسکریپت متوقف نمیشه؛ فقط خط مارکت‌کپ تو پیام
@@ -64,7 +83,7 @@ TIMEFRAMES = (
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
 TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۰۰ قرارداد برتر بر اساس حجم معاملات فیوچرز
 
-# فقط قراردادهای Perpetual (نه Delivery/Quarterly) در نظر گرفته میشن
+# فقط قراردادهای Perpetual (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
 
 MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.5"))
@@ -130,10 +149,25 @@ STATE_FILE = os.path.join(
     "alert_state.json"
 )
 
-# API بایننس فیوچرز (USDT-M). فقط همین صرافی استفاده میشه، بدون fallback.
-BINANCE_FUTURES_BASE = "https://fapi.binance.com"
+# API فیوچرز MEXC (USDT-M Perpetual). فقط همین صرافی استفاده میشه، بدون fallback.
+MEXC_FUTURES_BASE = "https://contract.mexc.com"
 
-REQUEST_SLEEP = 0.08
+# سقف نرخ MEXC فیوچرز تنگ‌تر از بایننسه (kline: 20/2s, ticker/depth: 10/2s)
+REQUEST_SLEEP = float(os.environ.get("REQUEST_SLEEP", "0.25"))
+
+# نگاشت تایم‌فریم داخلی (سبک بایننس) به اینتروال MEXC فیوچرز
+MEXC_INTERVAL_MAP = {
+    "1m": "Min1",
+    "5m": "Min5",
+    "15m": "Min15",
+    "30m": "Min30",
+    "1h": "Min60",
+    "4h": "Hour4",
+    "8h": "Hour8",
+    "1d": "Day1",
+    "1w": "Week1",
+    "1M": "Month1",
+}
 
 # نگاشت تایم‌فریم بایننس به فرمت اینتروال TradingView
 TV_INTERVAL_MAP = {
@@ -148,33 +182,73 @@ TEHRAN_OFFSET = timedelta(hours=3, minutes=30)
 # =======================================================================
 
 
+def to_mexc_symbol(symbol: str, quote_asset: str) -> str:
+    """تبدیل نماد سبک بایننس ('BTCUSDT') به فرمت MEXC فیوچرز ('BTC_USDT')."""
+    if symbol.endswith(quote_asset):
+        base = symbol[: -len(quote_asset)]
+        return f"{base}_{quote_asset}"
+
+    return symbol
+
+
+def from_mexc_symbol(mexc_symbol: str) -> str:
+    """تبدیل نماد MEXC ('BTC_USDT') به فرمت داخلی بدون آندرلاین ('BTCUSDT')."""
+    return mexc_symbol.replace("_", "")
+
+
+def interval_to_ms(interval: str) -> int:
+    unit = interval[-1]
+    value = int(interval[:-1])
+
+    multipliers = {
+        "m": 60_000,
+        "h": 3_600_000,
+        "d": 86_400_000,
+        "w": 604_800_000,
+    }
+
+    return value * multipliers.get(unit, 60_000)
+
+
 def get_all_symbols(quote_asset: str):
     """
-    همه‌ی نمادهای فیوچرز فعال (Perpetual) با quote asset مشخص‌شده رو
-    از بایننس فیوچرز برمی‌گردونه.
+    همه‌ی قراردادهای فیوچرز فعال (Perpetual) با quote asset مشخص‌شده رو
+    از MEXC فیوچرز برمی‌گردونه (فرمت داخلی، بدون آندرلاین).
     """
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/exchangeInfo"
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/detail"
 
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        data = resp.json()
+        payload = resp.json()
     except Exception as e:
-        print(f"[ERROR] گرفتن لیست نمادهای فیوچرز شکست خورد: {e}")
+        print(f"[ERROR] گرفتن لیست قراردادهای فیوچرز MEXC شکست خورد: {e}")
         return []
 
+    if not payload.get("success", True):
+        print(f"[ERROR] MEXC contract/detail error: {payload}")
+        return []
+
+    data = payload.get("data", [])
+    if isinstance(data, dict):
+        data = [data]
+
     symbols = []
-    for s in data.get("symbols", []):
-        if s.get("status") != "TRADING":
+    for s in data:
+        if s.get("state") != 0:  # 0 = enabled/trading
             continue
 
-        if s.get("quoteAsset") != quote_asset:
+        if s.get("quoteCoin") != quote_asset:
             continue
 
-        if FUTURES_ONLY_PERPETUAL and s.get("contractType") != "PERPETUAL":
+        if FUTURES_ONLY_PERPETUAL and s.get("futureType") != 1:  # 1 = perpetual
             continue
 
-        symbols.append(s["symbol"])
+        mexc_symbol = s.get("symbol")
+        if not mexc_symbol:
+            continue
+
+        symbols.append(from_mexc_symbol(mexc_symbol))
 
     return symbols
 
@@ -182,7 +256,7 @@ def get_all_symbols(quote_asset: str):
 def get_top_symbols_by_volume(quote_asset: str, top_n: int):
     """
     نمادهای فیوچرز معتبر با quote asset مشخص‌شده رو می‌گیره و بر اساس
-    حجم معاملات ۲۴ ساعته (quoteVolume) مرتب می‌کنه.
+    گردش مالی ۲۴ ساعته (amount24) مرتب می‌کنه.
     """
     valid_symbols = get_all_symbols(quote_asset)
 
@@ -191,15 +265,26 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
 
     valid_symbols_set = set(valid_symbols)
 
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/ticker/24hr"
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
 
     try:
         resp = requests.get(url, timeout=20)
         resp.raise_for_status()
-        ticker_map = {row.get("symbol"): row for row in resp.json()}
+        payload = resp.json()
     except Exception as e:
-        print(f"[ERROR] گرفتن حجم ۲۴ ساعته فیوچرز شکست خورد: {e}")
+        print(f"[ERROR] گرفتن حجم ۲۴ ساعته فیوچرز MEXC شکست خورد: {e}")
         return valid_symbols[:top_n]
+
+    data = payload.get("data", [])
+    if isinstance(data, dict):
+        data = [data]
+
+    ticker_map = {}
+    for row in data:
+        mexc_symbol = row.get("symbol")
+        if not mexc_symbol:
+            continue
+        ticker_map[from_mexc_symbol(mexc_symbol)] = row
 
     rows = []
     for symbol in valid_symbols:
@@ -208,7 +293,7 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
             continue
 
         try:
-            quote_volume = float(row.get("quoteVolume", 0))
+            quote_volume = float(row.get("amount24", 0))
         except (TypeError, ValueError):
             quote_volume = 0.0
 
@@ -216,17 +301,62 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
 
     rows.sort(key=lambda x: x[1], reverse=True)
 
-    return [symbol for symbol, _ in rows[:top_n]]
+    return [symbol for symbol, _ in rows[:top_n] if symbol in valid_symbols_set]
 
 
 def get_klines(symbol: str, interval: str, limit: int):
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
+    """
+    کندل‌های فیوچرز MEXC رو می‌گیره و به همون فرمت ردیفی بایننس نرمالایز
+    می‌کنه: [open_time_ms, open, high, low, close, vol, close_time_ms,
+    quote_turnover, ...]
+    """
+    mexc_interval = MEXC_INTERVAL_MAP.get(interval)
+    if not mexc_interval:
+        raise ValueError(f"اینتروال {interval} برای MEXC فیوچرز پشتیبانی نمیشه")
+
+    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
+    interval_sec = interval_to_ms(interval) // 1000
+
+    end = int(time.time())
+    start = end - interval_sec * (limit + 5)
+
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/kline/{mexc_symbol}"
+    params = {"interval": mexc_interval, "start": start, "end": end}
 
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
+    payload = resp.json()
 
-    return resp.json()
+    if not payload.get("success", True):
+        raise RuntimeError(f"MEXC futures kline error: {payload}")
+
+    data = payload.get("data") or {}
+
+    times = data.get("time") or []
+    opens = data.get("open") or []
+    highs = data.get("high") or []
+    lows = data.get("low") or []
+    closes = data.get("close") or []
+    vols = data.get("vol") or []
+    amounts = data.get("amount") or []
+
+    rows = []
+    for i in range(len(times)):
+        open_time_ms = int(times[i]) * 1000
+        close_time_ms = open_time_ms + interval_sec * 1000 - 1
+
+        rows.append([
+            open_time_ms,
+            opens[i],
+            highs[i],
+            lows[i],
+            closes[i],
+            vols[i],
+            close_time_ms,
+            amounts[i] if i < len(amounts) else 0,
+        ])
+
+    return rows[-limit:] if limit else rows
 
 
 def sma(values, length):
@@ -387,24 +517,10 @@ def get_htf_sma_stack(symbol: str, htf_timeframe: str):
     return htf_stack_bull, htf_stack_bear
 
 
-def interval_to_ms(interval: str) -> int:
-    unit = interval[-1]
-    value = int(interval[:-1])
-
-    multipliers = {
-        "m": 60_000,
-        "h": 3_600_000,
-        "d": 86_400_000,
-        "w": 604_800_000,
-    }
-
-    return value * multipliers.get(unit, 60_000)
-
-
 def tradingview_link(symbol: str, timeframe: str) -> str:
     tv_interval = TV_INTERVAL_MAP.get(timeframe, "")
     # ".P" یعنی چارت پرپچوال فیوچرز تو TradingView
-    link = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}.P"
+    link = f"https://www.tradingview.com/chart/?symbol=MEXC:{symbol}.P"
 
     if tv_interval:
         link += f"&interval={tv_interval}"
@@ -432,10 +548,20 @@ def human_number(n):
 
 
 def get_ticker_24hr_quote_volume(symbol: str):
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/ticker/24hr"
-    resp = requests.get(url, params={"symbol": symbol}, timeout=15)
+    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
+    resp = requests.get(url, params={"symbol": mexc_symbol}, timeout=15)
     resp.raise_for_status()
-    return float(resp.json().get("quoteVolume", 0))
+    payload = resp.json()
+
+    if not payload.get("success", True):
+        raise RuntimeError(f"MEXC futures ticker error: {payload}")
+
+    data = payload.get("data") or {}
+    if isinstance(data, list):
+        data = data[0] if data else {}
+
+    return float(data.get("amount24", 0))
 
 
 def get_extra_volumes(symbol: str):
@@ -478,18 +604,26 @@ def _price_zone_stats(orders):
 
 
 def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
-    url = f"{BINANCE_FUTURES_BASE}/fapi/v1/depth"
-    resp = requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
+    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/depth/{mexc_symbol}"
 
-    raw_bids, raw_asks = data.get("bids", []), data.get("asks", [])
+    resp = requests.get(url, params={"limit": limit}, timeout=15)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    if not payload.get("success", True):
+        raise RuntimeError(f"MEXC futures depth error: {payload}")
+
+    data = payload.get("data") or {}
+    raw_bids = data.get("bids", [])
+    raw_asks = data.get("asks", [])
 
     if not raw_bids and not raw_asks:
         raise RuntimeError(f"گرفتن اردربوک فیوچرز {symbol} شکست خورد (پاسخ خالی)")
 
-    bids = [(float(p), float(q)) for p, q in raw_bids]
-    asks = [(float(p), float(q)) for p, q in raw_asks]
+    # هر ردیف MEXC به فرمت [price, vol, count] هست؛ فقط price و vol لازمه
+    bids = [(float(row[0]), float(row[1])) for row in raw_bids]
+    asks = [(float(row[0]), float(row[1])) for row in raw_asks]
 
     total_bid_qty = sum(q for _, q in bids)
     total_ask_qty = sum(q for _, q in asks)
@@ -584,7 +718,7 @@ def evaluate_symbol(symbol: str, timeframe: str):
     """
     منطق سیگنال روی آخرین کندل بسته‌شده — دقیقاً مطابق آخرین نسخه‌ی
     اسکریپت Pine v6 (شامل تلورانس درصدی و سقف سایه‌ی مقابل).
-    داده‌ها از بایننس فیوچرز (USDT-M Perpetual) گرفته میشن.
+    داده‌ها از MEXC فیوچرز (USDT-M Perpetual) گرفته میشن.
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT)
@@ -935,8 +1069,8 @@ def main():
     print(
         f"[{datetime.now(timezone.utc).isoformat()}] "
         f"Checking top {len(symbols)} FUTURES symbols "
-        f"(by Binance Futures 24h volume, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}... "
-        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'}, exchange: binance-futures)"
+        f"(by MEXC Futures 24h turnover, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}... "
+        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'}, exchange: mexc-futures)"
     )
 
     bullish_count = 0
