@@ -30,30 +30,42 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 فقط آخرین کندلِ "بسته‌شده"ی هر نماد در هر تایم‌فریم رو چک می‌کنه.
 
 --- تغییرات این نسخه (هم‌سو با آخرین ویرایش اندیکاتور) ---
-  - ترتیب ارسال پیام‌ها تغییر کرد: سیگنال‌های عادی (نه ریسکی، نه
-    ناهم‌جهت با HTF) مثل قبل، همون لحظه که پیدا میشن فرستاده میشن.
-    سیگنال‌هایی که ریسکی هستن (بازار رنج / risky=True) یا با تایم
-    فریم بالاتر ناهم‌جهت هستن (htf_confirm=False) دیگه فوری فرستاده
-    نمیشن؛ جمع میشن و همه‌شون یکجا، درست قبل از پیام «پایان اسکن»،
-    فرستاده میشن (با یه پیام سرتیتر که تعداد نمادها رو نشون میده).
-  - اضافه شدن تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation):
+  - نسبت سایه‌ی مقابل (Opposite Shadow) نسبت به سایه‌ی غالب اضافه شد:
+      * SHADOW_MAX_BULL_OPPOSITE_PCT / SHADOW_MAX_BEAR_OPPOSITE_PCT
+        (پیش‌فرض 50%) - معادل shadow_max_bull/bear_opposite_pct تو Pine
+      * یعنی سایه‌ی غیرغالب (مثلاً سایه‌ی بالایی تو یه سیگنال بولیش)
+        نباید بیشتر از این درصد از سایه‌ی غالب همون کندل باشه.
+  - تلورانس درصدی برای نسبت‌های سایه اضافه شد:
+      * SHADOW_TOLERANCE_PERCENT (پیش‌فرض 10%) - معادل
+        shadow_tolerance_percent تو Pine؛ هم روی نسبت اصلی سایه به
+        بدنه (کمی راحت‌تر پاس میشه) و هم روی سقف سایه‌ی مقابل
+        (کمی سخت‌گیری کمتر) اعمال میشه.
+  - SMA7_MAX_DIST_MULT پیش‌فرض از 2.0 به 1.0 اصلاح شد تا دقیقاً با
+    پیش‌فرض واقعی sma7_max_dist_mult تو اسکریپت Pine (و عکس تنظیمات)
+    یکی باشه.
+  - ترتیب ارسال پیام‌ها: سیگنال‌های عادی (نه ریسکی، نه ناهم‌جهت با
+    HTF) همون لحظه که پیدا میشن فرستاده میشن. سیگنال‌هایی که ریسکی
+    هستن (بازار رنج / risky=True) یا با تایم فریم بالاتر ناهم‌جهت
+    هستن (htf_confirm=False) جمع میشن و همه‌شون یکجا، درست قبل از
+    پیام «پایان اسکن»، فرستاده میشن.
+  - تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation):
       * USE_HTF_CONFIRM: فعال/غیرفعال کردن این بخش (پیش‌فرض: فعال)
       * AUTO_HTF: انتخاب خودکار تایم بالاتر (15m->1h, 1h->4h,
         4h->1d, 1d->1w) - معادل auto_htf تو Pine
       * MANUAL_HTF: تایم بالاتر دستی، وقتی AUTO_HTF خاموشه یا
         نگاشت خودکاری براش تعریف نشده
-      * چیدمان SMA (7/25/99) روی تایم بالاتر محاسبه و با جهت
-        سیگنال مقایسه میشه؛ نتیجه فقط به‌صورت تگ (🔵 هم‌جهت /
-        ⚪ ناهم‌جهت) روی پیام گذاشته میشه، فیلتر نیست
-  - SMA7_MAX_DIST_MULT پیش‌فرضش از 1.0 به 2.0 تغییر کرد تا با
-    پیش‌فرض فعلی اسکریپت Pine (sma7_max_dist_mult) هم‌سو باشه
   - نسبت سایه به بدنه جدا شد: SHADOW_RATIO_BULL و SHADOW_RATIO_BEAR
-  - چک چیدمان SMA (sma_stack_bull / sma_stack_bear) که قبلاً نبود اضافه شد
+  - چک چیدمان SMA (sma_stack_bull / sma_stack_bear) اضافه شد
   - فاصله تا SMA7 دیگه بر مبنای ATR نیست؛ بر مبنای close و رنج خود
-    کندل سیگنال حساب میشه (SMA7_MAX_DIST_MULT). ATR_LEN و
-    SMA7_MAX_DIST_ATR حذف شدن.
+    کندل سیگنال حساب میشه (SMA7_MAX_DIST_MULT).
   - فیلتر حجم از شرط ورود سیگنال حذف شد و به یه تگ/هشدار جدا تبدیل شد
     (no_volume=True یعنی این سیگنال شرط حجم رو نداشته)
+  - فرمت پیام تلگرام بازطراحی شد (نسخه‌ی جدید build_symbol_message):
+      * خط اول: ایموجی جهت + هشتگ جهت (#LONG/#SHORT) + هشتگ نماد
+      * هر تایم‌فریم یه خط با فلش هم‌جهتی HTF (✅>/❌>)، RSI، ADX
+        (با ⚠️ اگه ریسکی باشه)، قیمت، و 🟡NoVol اگه شرط حجم نباشه
+      * بخش‌های حجم/اردربوک/مارکت‌کپ به انگلیسی
+      * خط آخر: زمان به وقت UTC و تهران (+3:30)
 
 نصب پیش‌نیازها:
     pip install requests
@@ -75,7 +87,7 @@ Setup Candle + SMA Alert Bot (Binance -> Telegram) — Multi-Timeframe
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import requests
 
@@ -99,13 +111,20 @@ MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.5"))
 SHADOW_RATIO_BULL = float(os.environ.get("SHADOW_RATIO_BULL", "1.5"))
 SHADOW_RATIO_BEAR = float(os.environ.get("SHADOW_RATIO_BEAR", "1.5"))
 
+# حداکثر سایه‌ی مقابل (غیرغالب) به صورت درصدی از سایه‌ی غالب همون کندل
+SHADOW_MAX_BULL_OPPOSITE_PCT = float(os.environ.get("SHADOW_MAX_BULL_OPPOSITE_PCT", "50.0"))
+SHADOW_MAX_BEAR_OPPOSITE_PCT = float(os.environ.get("SHADOW_MAX_BEAR_OPPOSITE_PCT", "50.0"))
+
+# درصد تلورانس (انعطاف) برای همه‌ی نسبت‌های سایه بالا
+SHADOW_TOLERANCE_PERCENT = float(os.environ.get("SHADOW_TOLERANCE_PERCENT", "10.0"))
+
 SMA_FAST_LEN = int(os.environ.get("SMA_FAST_LEN", "7"))
 SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
 SMA_TREND_LEN = int(os.environ.get("SMA_TREND_LEN", "99"))
 
 # فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای رنج خود همون کندل (نه ATR)
-# پیش‌فرض هم‌سو با اسکریپت Pine فعلی (sma7_max_dist_mult = 2.0)
-SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "2.0"))
+# پیش‌فرض هم‌سو با اسکریپت Pine فعلی (sma7_max_dist_mult = 1.0)
+SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.0"))
 
 # فیلتر روند/رنج با ADX — دقیقاً مطابق اسکریپت Pine
 ADX_LEN = int(os.environ.get("ADX_LEN", "14"))
@@ -157,10 +176,6 @@ STATE_FILE = os.path.join(
 BINANCE_BASE = "https://data-api.binance.vision"
 
 # --- پشتیبانی چند صرافی (Multi-Exchange Fallback) ---
-# اولویت پیش‌فرض: بایننس اول، اگه بایننس جواب نداد یا خطا داد (مثلاً
-# ریت‌لیمیت یا مسدودی جغرافیایی)، میره سراغ MEXC و بعد KuCoin.
-# این فقط برای گرفتن دیتای کندل/تیکر/اردربوک هست؛ به‌هیچ‌وجه منطق
-# سیگنال یا شرط‌ها فرق نمی‌کنه، فقط منبع دیتا عوض میشه.
 EXCHANGE_PRIORITY = (
     [ex.strip().lower() for ex in os.environ.get("EXCHANGE_PRIORITY", "binance,mexc,kucoin").split(",") if ex.strip()]
     or ["binance", "mexc", "kucoin"]
@@ -187,6 +202,9 @@ TV_INTERVAL_MAP = {
     "1h": "60", "2h": "120", "4h": "240", "6h": "360", "8h": "480",
     "12h": "720", "1d": "D", "3d": "3D", "1w": "W", "1M": "M",
 }
+
+# وقت تهران (Iran Standard Time) = UTC + 3:30
+TEHRAN_OFFSET = timedelta(hours=3, minutes=30)
 
 # =======================================================================
 
@@ -237,9 +255,7 @@ def _get_all_symbols_mexc(quote_asset: str):
 def get_all_symbols(quote_asset: str):
     """
     همه‌ی نمادهای اسپات فعال با quote asset مشخص‌شده رو برمی‌گردونه.
-    اولویت با بایننسه؛ اگه بایننس خطا داد (مثلاً مسدودی جغرافیایی/
-    ریت‌لیمیت)، میره سراغ MEXC که فرمت نماد‌هاش دقیقاً مثل بایننسه
-    (بدون خط تیره)، پس نیازی به تبدیل نداره.
+    اولویت با بایننسه؛ اگه بایننس خطا داد، میره سراغ MEXC.
     """
     errors = []
 
@@ -250,9 +266,6 @@ def get_all_symbols(quote_asset: str):
             elif exchange == "mexc":
                 symbols = _get_all_symbols_mexc(quote_asset)
             else:
-                # کوکوین برای انتخاب یونیورس نماد استفاده نمیشه چون
-                # فرمت نمادش با بقیه فرق داره؛ فقط برای دیتای کندل/
-                # اردربوک به‌عنوان آخرین fallback به کار میره.
                 continue
 
             if symbols:
@@ -285,10 +298,7 @@ def _get_ticker_24hr_map_mexc():
 def get_top_symbols_by_volume(quote_asset: str, top_n: int):
     """
     نمادهای معتبر اسپات با quote asset مشخص‌شده رو می‌گیره و بر اساس
-    حجم معاملات ۲۴ ساعته (quoteVolume) مرتب می‌کنه، و ۲۰۰ تای برتر
-    (یا هر عددی که TOP_N باشه) رو برمی‌گردونه.
-    اولویت با بایننسه؛ فقط اگه بایننس کلاً در دسترس نبود میره سراغ
-    MEXC (چون یونیورس نماد هم از همون منبع باید بیاد تا سازگار بمونه).
+    حجم معاملات ۲۴ ساعته (quoteVolume) مرتب می‌کنه.
     """
     valid_symbols = get_all_symbols(quote_asset)
 
@@ -302,8 +312,6 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
         ("mexc", _get_ticker_24hr_map_mexc),
     ]
 
-    # فقط صرافی‌هایی که تو EXCHANGE_PRIORITY هستن رو امتحان کن، به
-    # همون ترتیب اولویت
     ordered_fetchers = [
         (name, fn) for name, fn in ticker_fetchers if name in EXCHANGE_PRIORITY
     ] or ticker_fetchers
@@ -314,7 +322,6 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
     for name, fetcher in ordered_fetchers:
         try:
             candidate_map = fetcher()
-            # فقط نمادهایی که تو یونیورس معتبرمون هستن رو نگه می‌داریم
             if any(sym in valid_symbols_set for sym in candidate_map):
                 ticker_map = candidate_map
                 used_exchange = name
@@ -348,7 +355,6 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
 
 
 def _get_klines_binance(symbol: str, interval: str, limit: int):
-    """کندل‌های خام رو از بایننس می‌گیره."""
     url = f"{BINANCE_BASE}/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
 
@@ -359,11 +365,6 @@ def _get_klines_binance(symbol: str, interval: str, limit: int):
 
 
 def _get_klines_mexc(symbol: str, interval: str, limit: int):
-    """
-    کندل‌های خام رو از MEXC می‌گیره. MEXC برای اسپات دقیقاً از همون
-    فرمت نماد (بدون خط تیره) و همون شکل خروجی کندل بایننس استفاده
-    می‌کنه، فقط اسم بعضی اینتروال‌ها فرق داره (مثلاً "1h" -> "60m").
-    """
     mexc_interval = MEXC_INTERVAL_MAP.get(interval)
     if not mexc_interval:
         raise ValueError(f"اینتروال {interval} برای MEXC پشتیبانی نمیشه")
@@ -378,14 +379,6 @@ def _get_klines_mexc(symbol: str, interval: str, limit: int):
 
 
 def _get_klines_kucoin(symbol: str, interval: str, limit: int):
-    """
-    کندل‌های خام رو از کوکوین می‌گیره و به همون فرمت لیست-از-لیست
-    بایننس تبدیل می‌کنه: [open_time_ms, open, high, low, close,
-    volume, close_time_ms, quote_volume, ...]
-    کوکوین کندل‌ها رو به‌ترتیب نزولی (جدیدترین اول) و با ترتیب فیلدهای
-    [time, open, close, high, low, volume, turnover] برمی‌گردونه، پس
-    باید هم ترتیب فیلدها هم ترتیب زمانی رو اصلاح کنیم.
-    """
     kucoin_type = KUCOIN_INTERVAL_MAP.get(interval)
     if not kucoin_type:
         raise ValueError(f"اینتروال {interval} برای KuCoin پشتیبانی نمیشه")
@@ -411,13 +404,10 @@ def _get_klines_kucoin(symbol: str, interval: str, limit: int):
         raise RuntimeError(f"KuCoin error: {payload.get('code')} {payload.get('msg')}")
 
     raw = payload.get("data", [])
-
-    # کوکوین جدیدترین رو اول میده؛ برعکسش می‌کنیم تا صعودی (قدیمی -> جدید) بشه
     raw = list(reversed(raw))
 
     normalized = []
     for row in raw:
-        # row: [time, open, close, high, low, volume, turnover]
         open_time_ms = int(float(row[0])) * 1000
         o, cl, hi, lo, vol, turnover = (float(x) for x in row[1:7])
         close_time_ms = open_time_ms + interval_sec * 1000 - 1
@@ -437,13 +427,6 @@ _KLINES_FETCHERS = {
 
 
 def get_klines(symbol: str, interval: str, limit: int):
-    """
-    کندل‌ها رو به ترتیب اولویت EXCHANGE_PRIORITY می‌گیره (پیش‌فرض:
-    بایننس -> MEXC -> KuCoin). اگه صرافی اول خطا بده یا دیتا برنگردونه
-    (ریت‌لیمیت، قطعی، مسدودی جغرافیایی و ...)، خودکار میره سراغ صرافی
-    بعدی. منطق سیگنال و شرط‌ها کاملاً مستقل از این بخشه و فرقی نمی‌کنه
-    دیتا از کدوم صرافی اومده باشه.
-    """
     errors = []
 
     for exchange in EXCHANGE_PRIORITY:
@@ -467,7 +450,6 @@ def get_klines(symbol: str, interval: str, limit: int):
 
 
 def sma(values, length):
-    """SMA ساده."""
     result = [None] * len(values)
 
     for i in range(length - 1, len(values)):
@@ -478,10 +460,6 @@ def sma(values, length):
 
 
 def rsi(values, length=14):
-    """
-    RSI استاندارد (روش Wilder's smoothing).
-    خروجی: لیستی هم‌طول values که ایندکس‌های قبل از آماده‌شدن None هستن.
-    """
     n = len(values)
     result = [None] * n
 
@@ -514,12 +492,6 @@ def rsi(values, length=14):
 
 
 def rma(values, length):
-    """
-    Wilder's smoothing (همون ta.rma تو Pine) — پایه‌ی ADX/DMI.
-    مقادیر ابتدایی که None هستن (وارم‌آپ) نادیده گرفته میشن؛ اولین
-    مقدار خروجی، میانگین ساده‌ی اولین `length` مقدار معتبره و بعدش
-    هر مقدار جدید با فرمول Wilder روی مقدار قبلی اعمال میشه.
-    """
     n = len(values)
     result = [None] * n
 
@@ -543,7 +515,6 @@ def rma(values, length):
 
 
 def true_range_series(highs, lows, closes):
-    """True Range کلاسیک؛ برای کندل اول چون close قبلی نداریم، فقط high-low."""
     n = len(highs)
     tr = [None] * n
 
@@ -561,11 +532,6 @@ def true_range_series(highs, lows, closes):
 
 
 def adx_series(highs, lows, closes, di_length, adx_smoothing):
-    """
-    پیاده‌سازی ta.dmi(di_length, adx_smoothing) از Pine — فقط سری ADX رو
-    برمی‌گردونه (چون به +DI/-DI جداگانه نیازی نداریم، فقط برای فیلتر
-    روند/رنج از خود ADX استفاده میشه).
-    """
     n = len(highs)
     plus_dm = [0.0] * n
     minus_dm = [0.0] * n
@@ -600,13 +566,6 @@ def adx_series(highs, lows, closes, di_length, adx_smoothing):
 
 
 def get_htf_timeframe(base_timeframe: str) -> str:
-    """
-    انتخاب تایم فریم بالاتر برای تایید هم‌جهتی SMA - معادل
-    auto_htf_value تو اسکریپت Pine:
-        15m -> 1h, 1h -> 4h, 4h -> 1d, 1d -> 1w
-    اگه AUTO_HTF خاموش باشه، یا تایم فعلی تو نگاشت نباشه، از
-    MANUAL_HTF استفاده میشه.
-    """
     if AUTO_HTF and base_timeframe in AUTO_HTF_MAP:
         return AUTO_HTF_MAP[base_timeframe]
 
@@ -614,16 +573,6 @@ def get_htf_timeframe(base_timeframe: str) -> str:
 
 
 def get_htf_sma_stack(symbol: str, htf_timeframe: str):
-    """
-    چیدمان SMA (7/25/99) روی تایم فریم بالاتر رو حساب می‌کنه - معادل
-    بخش request.security اسکریپت Pine (htf_sma7/25/99 و
-    htf_stack_bull/bear). فقط برای تایید جهت استفاده میشه، نه محاسبه‌ی
-    سیگنال مستقل روی تایم بالاتر.
-
-    خروجی: (htf_stack_bull, htf_stack_bear) یا None اگه دیتای کافی
-    نبود یا خطایی پیش اومد (در این حالت، تایید HTF نادیده گرفته میشه
-    و سیگنال اصلی همچنان فرستاده میشه).
-    """
     try:
         raw = get_klines(symbol, htf_timeframe, HTF_KLINES_LIMIT)
     except Exception as e:
@@ -639,7 +588,6 @@ def get_htf_sma_stack(symbol: str, htf_timeframe: str):
     now_ms = int(time.time() * 1000)
     idx = len(raw) - 1
 
-    # مثل تایم فعلی، اگه آخرین کندل HTF هنوز بسته نشده، قبلی رو بگیر
     if close_times[idx] > now_ms:
         idx -= 1
 
@@ -660,7 +608,6 @@ def get_htf_sma_stack(symbol: str, htf_timeframe: str):
 
 
 def interval_to_ms(interval: str) -> int:
-    """تبدیل رشته‌ی تایم‌فریم بایننس (مثل '15m', '4h', '1d') به میلی‌ثانیه."""
     unit = interval[-1]
     value = int(interval[:-1])
 
@@ -675,7 +622,6 @@ def interval_to_ms(interval: str) -> int:
 
 
 def tradingview_link(symbol: str, timeframe: str) -> str:
-    """لینک مستقیم چارت TradingView برای نماد/تایم‌فریم."""
     tv_interval = TV_INTERVAL_MAP.get(timeframe, "")
     link = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}"
 
@@ -686,14 +632,13 @@ def tradingview_link(symbol: str, timeframe: str) -> str:
 
 
 def human_number(n):
-    """فرمت خوانا برای عددهای بزرگ (حجم، مارکت‌کپ و ...) با K/M/B."""
     if n is None:
-        return "نامشخص"
+        return "N/A"
 
     try:
         n = float(n)
     except (TypeError, ValueError):
-        return "نامشخص"
+        return "N/A"
 
     sign = "-" if n < 0 else ""
     n = abs(n)
@@ -706,11 +651,6 @@ def human_number(n):
 
 
 def get_ticker_24hr_quote_volume(symbol: str):
-    """
-    حجم ۲۴ ساعته (بر حسب quote asset) یک نماد رو می‌گیره، با همون
-    اولویت EXCHANGE_PRIORITY. KuCoin هم برای این بخش پشتیبانی میشه
-    چون فقط برای نمایش تو پیامه، نه انتخاب نماد.
-    """
     errors = []
 
     for exchange in EXCHANGE_PRIORITY:
@@ -745,22 +685,13 @@ def get_ticker_24hr_quote_volume(symbol: str):
 
 
 def get_extra_volumes(symbol: str):
-    """
-    حجم (quote volume، یعنی بر حسب USDT) در بازه‌های:
-      - ۱ ساعت گذشته  -> مجموع ۶۰ کندل ۱ دقیقه‌ای
-      - ۲۴ ساعت گذشته -> از endpoint رسمی ticker/24hr بایننس
-      - ۷ روز گذشته   -> مجموع ۷ کندل روزانه (شامل کندل امروز که هنوز
-                          کامل نشده، به‌صورت تقریبی)
-    فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده، نه برای
-    همه‌ی نمادها، تا تعداد درخواست‌ها به بایننس زیاد نشه.
-    """
     vol_1h = None
     vol_24h = None
     vol_7d = None
 
     try:
         k1m = get_klines(symbol, "1m", 60)
-        vol_1h = sum(float(k[7]) for k in k1m)  # index 7 = quote asset volume
+        vol_1h = sum(float(k[7]) for k in k1m)
     except Exception as e:
         print(f"[WARN] volume 1h {symbol}: {e}")
 
@@ -779,11 +710,6 @@ def get_extra_volumes(symbol: str):
 
 
 def _price_zone_stats(orders):
-    """
-    برای یک لیست سفارش [(price, qty), ...] این‌ها رو حساب می‌کنه:
-      - میانگین قیمت وزن‌دار بر اساس حجم (weighted average price)
-      - محدوده‌ی قیمتی (کمترین تا بیشترین قیمتی که این سفارش‌ها توش هستن)
-    """
     if not orders:
         return None, None, None
 
@@ -807,7 +733,6 @@ def _get_depth_binance(symbol: str, limit: int):
 
 def _get_depth_mexc(symbol: str, limit: int):
     url = f"{MEXC_BASE}/api/v3/depth"
-    # MEXC فقط از این مقادیر مشخص برای limit پشتیبانی می‌کنه
     allowed = [5, 10, 20, 50, 100, 500, 1000]
     mexc_limit = min(allowed, key=lambda x: abs(x - limit))
     resp = requests.get(url, params={"symbol": symbol, "limit": mexc_limit}, timeout=15)
@@ -836,15 +761,6 @@ _DEPTH_FETCHERS = {
 
 
 def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
-    """
-    خلاصه‌ی اردربوک فعلی:
-      - مجموع حجم تجمیعی سمت خرید (bids) و فروش (asks) در عمق مشخص‌شده
-      - مجموع ارزش (notional) بزرگ‌ترین N سفارش هر سمت (دیوارهای احتمالی)
-      - درصد عدم‌تعادل خرید/فروش (imbalance)
-      - محدوده‌ی قیمتی و میانگین قیمت وزن‌دار بزرگ‌ترین سفارش‌های هر سمت
-    فقط زمانی صدا زده میشه که سیگنالی برای ارسال پیدا شده. اردربوک هم
-    مثل کندل‌ها به ترتیب EXCHANGE_PRIORITY از صرافی‌های مختلف گرفته میشه.
-    """
     errors = []
     raw_bids, raw_asks = None, None
 
@@ -904,15 +820,6 @@ def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int
 
 
 def load_coingecko_market_map(pages: int = COINGECKO_PAGES):
-    """
-    نگاشت symbol (مثلاً "BTC") -> {market_cap, rank, name} با گرفتن
-    چند صفحه از coins/markets (مرتب‌شده بر اساس مارکت‌کپ نزولی).
-    فقط یک‌بار در ابتدای هر اجرای اسکریپت ساخته میشه، و فقط برای
-    نمایش مارکت‌کپ/رنک تو پیام استفاده میشه (نه انتخاب نماد).
-
-    توجه: چون چند کوین ممکنه symbol یکسان داشته باشن، در صورت تکرار
-    symbol، اونی که رنک بهتر (عدد کوچیک‌تر) داره نگه داشته میشه.
-    """
     mapping = {}
 
     if not COINGECKO_ENABLED:
@@ -969,27 +876,13 @@ def load_coingecko_market_map(pages: int = COINGECKO_PAGES):
 def evaluate_symbol(symbol: str, timeframe: str):
     """
     منطق سیگنال روی آخرین کندل بسته‌شده — دقیقاً مطابق آخرین نسخه‌ی
-    اسکریپت Pine v6:
-      - small_body + سایه‌ی غالب با نسبت جدا برای بولیش/بریش
-      - close بالا/پایین هر سه SMA + چیدمان صحیح SMA ها نسبت به هم
-      - بدنه نباید SMA7 رو قطع کرده باشه
-      - فاصله‌ی close تا SMA7 <= SMA7_MAX_DIST_MULT * رنج خود کندل
-      - فیلتر روند با ADX: ADX >= آستانه -> سیگنال عادی،
-        ADX < آستانه -> همون سیگنال به‌صورت "ریسکی"
-      - شرط حجم (حجم کندل فعلی کمتر از قبلی) فقط تگ می‌خوره، فیلتر نیست
-      - تایید هم‌جهتی با تایم بالاتر (HTF Confirmation) فقط تگ می‌خوره،
-        فیلتر نیست
-
-    خروجی: dict یا None اگه سیگنالی نبود.
+    اسکریپت Pine v6 (شامل تلورانس درصدی و سقف سایه‌ی مقابل).
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT)
 
     if not raw or len(raw) < SMA_TREND_LEN + 2:
         return None
-
-    # Binance kline:
-    # [open_time, open, high, low, close, volume, close_time, ...]
 
     opens = [float(k[1]) for k in raw]
     highs = [float(k[2]) for k in raw]
@@ -1000,7 +893,6 @@ def evaluate_symbol(symbol: str, timeframe: str):
     open_times = [int(k[0]) for k in raw]
     close_times = [int(k[6]) for k in raw]
 
-    # اگر آخرین کندل هنوز بسته نشده، قبلی را بررسی کن
     now_ms = int(time.time() * 1000)
 
     idx = len(raw) - 1
@@ -1064,7 +956,6 @@ def evaluate_symbol(symbol: str, timeframe: str):
         and c < sma99
     )
 
-    # چیدمان صحیح SMA ها نسبت به هم (ترتیب صعودی/نزولی)
     sma_stack_bull = sma7 > sma25 and sma25 > sma99
     sma_stack_bear = sma7 < sma25 and sma25 < sma99
 
@@ -1076,14 +967,31 @@ def evaluate_symbol(symbol: str, timeframe: str):
         and sma7 <= body_high
     )
 
-    # فاصله‌ی close همون کندل ستاپ تا SMA7 - فقط بر اساس خود همون کندل
     dist_to_sma7 = abs(c - sma7)
     near_sma7 = dist_to_sma7 <= candle_range * SMA7_MAX_DIST_MULT
+
+    # --- تلورانس درصدی (معادل tol_factor_min / tol_factor_max تو Pine) ---
+    tol_factor_min = 1 - (SHADOW_TOLERANCE_PERCENT / 100)
+    tol_factor_max = 1 + (SHADOW_TOLERANCE_PERCENT / 100)
+
+    shadow_ratio_bull_eff = SHADOW_RATIO_BULL * tol_factor_min
+    shadow_ratio_bear_eff = SHADOW_RATIO_BEAR * tol_factor_min
+
+    # سقف سایه‌ی مقابل: نسبی به سایه‌ی غالب همون کندل + تلورانس
+    shadow_max_bull_opposite_eff = lower_shadow * (SHADOW_MAX_BULL_OPPOSITE_PCT / 100) * tol_factor_max
+    shadow_max_bear_opposite_eff = upper_shadow * (SHADOW_MAX_BEAR_OPPOSITE_PCT / 100) * tol_factor_max
+
+    cond_lower_ratio_ok = lower_shadow >= body * shadow_ratio_bull_eff
+    cond_upper_opposite_ok = upper_shadow <= shadow_max_bull_opposite_eff
+
+    cond_upper_ratio_ok = upper_shadow >= body * shadow_ratio_bear_eff
+    cond_lower_opposite_ok = lower_shadow <= shadow_max_bear_opposite_eff
 
     bullish_base = (
         small_body
         and lower_dominant
-        and lower_shadow >= body * SHADOW_RATIO_BULL
+        and cond_lower_ratio_ok
+        and cond_upper_opposite_ok
         and above_all_sma
         and sma_stack_bull
         and not body_crosses_sma7
@@ -1093,7 +1001,8 @@ def evaluate_symbol(symbol: str, timeframe: str):
     bearish_base = (
         small_body
         and upper_dominant
-        and upper_shadow >= body * SHADOW_RATIO_BEAR
+        and cond_upper_ratio_ok
+        and cond_lower_opposite_ok
         and below_all_sma
         and sma_stack_bear
         and not body_crosses_sma7
@@ -1111,14 +1020,10 @@ def evaluate_symbol(symbol: str, timeframe: str):
     else:
         return None
 
-    # شرط حجم - فقط تگ می‌خوره، سیگنال رو فیلتر نمی‌کنه
     vol_now = volumes[idx]
     vol_prev = volumes[idx - 1]
     no_volume = not (vol_now < vol_prev)
 
-    # --- تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation) ---
-    # دقیقاً مثل دایره‌ی تاییدیه‌ی اسکریپت Pine: فیلتر نمی‌کنه، فقط
-    # به‌عنوان یه تگ جدا روی سیگنال گذاشته میشه.
     htf_confirm = None
     htf_timeframe_used = None
 
@@ -1202,61 +1107,55 @@ def send_telegram(text: str):
 
 def build_symbol_message(symbol, tf_results, coingecko_map):
     """
-    پیام واحد برای یک نماد که ممکنه شامل سیگنال چند تایم‌فریم باشه
-    (مثلاً هم 15m هم 1h تو یه پیام). حجم/اردربوک/مارکت‌کپ فقط یک‌بار
-    برای کل نماد گرفته و نمایش داده میشه.
+    پیام واحد برای یک نماد که ممکنه شامل سیگنال چند تایم‌فریم باشه.
+
+    فرمت:
+      🟢 #LONG #SYMBOL   (یا 🔴 #SHORT #SYMBOL)
+
+      ⏱️ 15m ✅> 1h | RSI 40.4 | ADX 27.3 ⚠️ | 💰 42.11 | 🟡NoVol
+      ⏱️ 1h ❌> 4h | RSI ...
+
+      📊 Vol: 1h 163K | 24h 13.3M | 7d 81M
+      📖 OrderBook: Buy 187K / Sell 247K (-12.6%)
+      🏆 MCap: 540M | Rank #101
+
+      🔗 <tradingview link>
+
+      🕒 2026-09-02 07:30 UTC | 11:00 (+3:30)
     """
+
+    first_signal = tf_results[0][1]["signal"]
+    is_bullish = first_signal == "bullish"
+    direction_emoji = "🟢" if is_bullish else "🔴"
+    direction_hashtag = "#LONG" if is_bullish else "#SHORT"
+
+    header_line = f"{direction_emoji} {direction_hashtag} #{symbol}"
 
     lines_per_tf = []
 
     for tf, res in tf_results:
-        is_bullish = res["signal"] == "bullish"
-        direction_fa = "صعودی 🟢 #long" if is_bullish else "نزولی 🔴 #short"
-        risky_tag = " ⚠️ ریسکی (رنج)" if res["risky"] else ""
-        no_volume_tag = " 🟡 بدون شرط حجم" if res["no_volume"] else ""
-
-        # تگ تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation)
-        htf_tag = ""
+        htf_arrow = ""
         if res.get("htf_confirm") is True:
-            htf_tag = f" 🔵 هم‌جهت با {res.get('htf_timeframe')}"
+            htf_arrow = f" ✅> {res.get('htf_timeframe')}"
         elif res.get("htf_confirm") is False:
-            htf_tag = f" ⚪ ناهم‌جهت با {res.get('htf_timeframe')}"
-
-        # همه‌ی شرایط رو داره: ریسکی نیست، شرط حجم رو داره، و اگه
-        # تایید HTF فعاله، هم‌جهت هم تایید شده -> #pass
-        is_full_pass = (
-            not res["risky"]
-            and not res["no_volume"]
-            and res.get("htf_confirm") is True
-        )
-        pass_tag = " ✅ #pass" if is_full_pass else ""
-
-        candle_time_str = datetime.fromtimestamp(
-            res["candle_open_ms"] / 1000, tz=timezone.utc
-        ).strftime("%Y-%m-%d %H:%M UTC")
+            htf_arrow = f" ❌> {res.get('htf_timeframe')}"
 
         rsi_value = res["rsi_value"]
-        is_hot = (
-            (res["signal"] == "bullish" and rsi_value is not None and rsi_value > RSI_BULLISH_HOT)
-            or (res["signal"] == "bearish" and rsi_value is not None and rsi_value < RSI_BEARISH_HOT)
-        )
-        rsi_str = "نامشخص" if rsi_value is None else f"{rsi_value:.1f}"
-        if is_hot:
-            rsi_str = f"⚠️{rsi_str}⚠️"
+        rsi_str = "?" if rsi_value is None else f"{rsi_value:.1f}"
 
-        candles_ago_str = "الان" if res["candles_ago"] == 0 else f"{res['candles_ago']} کندل پیش"
+        adx_str = "?" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
+        risky_suffix = " ⚠️" if res["risky"] else ""
 
-        adx_str = "؟" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
+        no_volume_suffix = " | 🟡NoVol" if res["no_volume"] else ""
 
         lines_per_tf.append(
-            f"⏱ <b>{tf}</b>: {direction_fa}{risky_tag}{no_volume_tag}{htf_tag}{pass_tag}\n"
-            f"   RSI {rsi_str} | ADX {adx_str} | 💰 {res['close_price']}\n"
-            f"   🕒 {candle_time_str} ({candles_ago_str})"
+            f"⏱️ {tf}{htf_arrow} | RSI {rsi_str} | ADX {adx_str}{risky_suffix} | "
+            f"💰 {res['close_price']}{no_volume_suffix}"
         )
 
     vol_1h, vol_24h, vol_7d = get_extra_volumes(symbol)
     volume_line = (
-        f"📈 حجم: 1h {human_number(vol_1h)} | "
+        f"📊 Vol: 1h {human_number(vol_1h)} | "
         f"24h {human_number(vol_24h)} | 7d {human_number(vol_7d)}"
     )
 
@@ -1268,40 +1167,44 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
 
     if ob:
         imbalance_str = (
-            f"{ob['imbalance_pct']:+.1f}%" if ob["imbalance_pct"] is not None else "؟"
+            f"{ob['imbalance_pct']:+.1f}%" if ob["imbalance_pct"] is not None else "N/A"
         )
-        bid_str = f"~{ob['bid_wavg_price']:g}" if ob["bid_wavg_price"] is not None else "؟"
-        ask_str = f"~{ob['ask_wavg_price']:g}" if ob["ask_wavg_price"] is not None else "؟"
 
         orderbook_line = (
-            f"📖 اردربوک: خرید {human_number(ob['total_bid_notional'])} / "
-            f"فروش {human_number(ob['total_ask_notional'])} "
-            f"(عدم‌تعادل {imbalance_str})\n"
-            f"   دیوار خرید {bid_str} | دیوار فروش {ask_str}"
+            f"📖 OrderBook: Buy {human_number(ob['total_bid_notional'])} / "
+            f"Sell {human_number(ob['total_ask_notional'])} "
+            f"({imbalance_str})"
         )
     else:
-        orderbook_line = "📖 اردربوک: نامشخص"
+        orderbook_line = "📖 OrderBook: N/A"
 
     base_asset = symbol[:-len(QUOTE_ASSET)] if symbol.endswith(QUOTE_ASSET) else symbol
     mcap_info = coingecko_map.get(base_asset)
     if mcap_info:
-        rank_str = f"#{mcap_info['rank']}" if mcap_info["rank"] else "؟"
-        mcap_line = f"🏆 مارکت‌کپ: {human_number(mcap_info['market_cap'])} | رنک {rank_str}"
+        rank_str = f"#{mcap_info['rank']}" if mcap_info["rank"] else "N/A"
+        mcap_line = f"🏆 MCap: {human_number(mcap_info['market_cap'])} | Rank {rank_str}"
     else:
-        mcap_line = "🏆 مارکت‌کپ/رنک: یافت نشد"
+        mcap_line = "🏆 MCap: N/A"
 
-    # لینک چارت رو با تایم‌فریم اولین سیگنال (معمولاً کوچیک‌ترین) می‌سازیم
     tv_link = tradingview_link(symbol, tf_results[0][0])
 
-    tf_block = "\n\n".join(lines_per_tf)
+    tf_block = "\n".join(lines_per_tf)
+
+    now_utc = datetime.now(timezone.utc)
+    now_tehran = now_utc + TEHRAN_OFFSET
+    time_line = (
+        f"🕒 {now_utc.strftime('%Y-%m-%d %H:%M')} UTC | "
+        f"{now_tehran.strftime('%H:%M')} (+3:30)"
+    )
 
     msg = (
-        f"<b>سیگنال‌های {symbol}</b>\n\n"
+        f"{header_line}\n\n"
         f"{tf_block}\n\n"
         f"{volume_line}\n"
         f"{orderbook_line}\n"
         f"{mcap_line}\n\n"
-        f"🔗 {tv_link}"
+        f"🔗 {tv_link}\n\n"
+        f"{time_line}"
     )
 
     return msg
@@ -1317,7 +1220,6 @@ def main():
 
     state = load_state()
 
-    # نگاشت مارکت‌کپ/رنک فقط برای نمایش تو پیام استفاده میشه
     coingecko_map = load_coingecko_market_map()
 
     symbols = get_top_symbols_by_volume(QUOTE_ASSET, TOP_N)
@@ -1336,9 +1238,6 @@ def main():
     duplicate_skipped = 0
     messages_sent = 0
 
-    # سیگنال‌های ریسکی (رنج) یا ناهم‌جهت با HTF اینجا جمع میشن و یکجا،
-    # درست قبل از پیام پایان اسکن، فرستاده میشن. سیگنال‌های عادی (نه
-    # ریسکی و نه ناهم‌جهت با HTF) همون لحظه فرستاده میشن.
     delayed_signals = []
 
     for symbol in symbols:
@@ -1362,7 +1261,6 @@ def main():
 
                 key = f"{symbol}_{timeframe}"
 
-                # --- جلوگیری از سیگنال تکراری ---
                 if state.get(key) == result["candle_open_ms"]:
                     duplicate_skipped += 1
                     print(
@@ -1397,10 +1295,6 @@ def main():
 
             time.sleep(REQUEST_SLEEP)
 
-        # --- جدا کردن سیگنال‌های عادی از سیگنال‌های تأخیری ---
-        # عادی: همون لحظه، به شکل یه پیام واحد برای این نماد فرستاده میشه.
-        # تأخیری (ریسکی یا ناهم‌جهت با HTF): فرستاده نمیشه، فقط جمع
-        # میشه تا آخر اسکن یکجا بره.
         def _is_delayed(res):
             return res["risky"] or res.get("htf_confirm") is False
 
@@ -1417,7 +1311,6 @@ def main():
 
     save_state(state)
 
-    # ---- ارسال یکجای سیگنال‌های تأخیری (ریسکی یا ناهم‌جهت با HTF) ----
     if delayed_signals:
         send_telegram(
             f"<b>⚠️ سیگنال‌های ریسکی / ناهم‌جهت با HTF این اسکن</b>\n"
@@ -1429,7 +1322,6 @@ def main():
             send_telegram(msg)
             messages_sent += 1
 
-    # ---- پیام پایان اسکن ----
     total_signals = bullish_count + bearish_count
     finish_time_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -1444,7 +1336,6 @@ def main():
     )
 
     send_telegram(summary_msg)
-    # --------------------------
 
     print("Done.")
 
