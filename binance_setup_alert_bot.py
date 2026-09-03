@@ -78,7 +78,7 @@ TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۰۰ نماد برتر بر ا
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
 
-MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.5"))
+MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.33"))
 
 # نسبت سایه به بدنه - جدا برای بولیش (سایه پایین) و بریش (سایه بالا)
 SHADOW_RATIO_BULL = float(os.environ.get("SHADOW_RATIO_BULL", "1.5"))
