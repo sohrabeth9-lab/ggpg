@@ -1,5 +1,6 @@
 """
-Setup Candle + SMA Alert Bot (MEXC FUTURES -> Telegram) — Multi-Timeframe
+Setup Candle + SMA Alert Bot (Binance SPOT + MEXC FUTURES fallback -> Telegram)
+Multi-Timeframe
 ============================================================================
 منطق سیگنال دقیقاً منطبق با آخرین نسخه‌ی اسکریپت Pine v6
 (indicator "Setup Candle + SMA View") هست:
@@ -17,33 +18,30 @@ Setup Candle + SMA Alert Bot (MEXC FUTURES -> Telegram) — Multi-Timeframe
   - شرط حجم فیلتر نیست؛ فقط تگ جدا (No-Volume-Condition)
   - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation) - فقط تگ،
     نه فیلتر
+  - تلورانس درصدی روی نسبت‌های سایه (SHADOW_TOLERANCE_PERCENT) و سقف
+    سایه‌ی مقابل نسبی به سایه‌ی غالب (SHADOW_MAX_..._OPPOSITE_PCT)
 
---- تغییر این نسخه ---
-منبع داده از بایننس فیوچرز به MEXC فیوچرز (contract.mexc.com,
-USDT-M Perpetual) عوض شد؛ چون بایننس فیوچرز خیلی از آی‌پی‌ها/سرورها
-رو با خطای 451 (محدودیت جغرافیایی) بلاک می‌کنه و ساختار دیتای MEXC
-فیوچرز (OHLCV کندل، اردربوک، ۲۴ساعته) از نظر محتوا تفاوت معناداری
-با بایننس نداره. هیچ صرافی دیگه‌ای (بایننس/کوکوین) دیگه استفاده
-نمیشه — فقط MEXC فیوچرز، بدون fallback.
+--- منبع داده (این نسخه) ---
+اولویت اول: بایننس SPOT (نه فیوچرز، چون فیوچرز بایننس رو خیلی از
+سرورها با خطای 451 بلاک می‌کنه).
+اولویت دوم: MEXC فیوچرز (USDT-M Perpetual) - فقط برای نمادهایی که
+اصلاً تو بایننس اسپات موجود نیستن. یعنی لیست نهایی نمادها اول از
+بایننس (بر اساس حجم ۲۴ساعته) پر میشه و بقیه (اگه نماد فقط تو مکسی
+باشه) از مکسی فیوچرز اضافه میشه. هر نماد با منبعش (source: "binance"
+یا "mexc") تگ میشه و کندل/اردربوک/حجمش هم از همون صرافی گرفته میشه.
 
-نکات فنی مهم درباره‌ی MEXC فیوچرز:
-  - فرمت نماد تو MEXC با آندرلاین جداست ("BTC_USDT")؛ داخل اسکریپت
-    نمادها همچنان به فرمت بدون آندرلاین ("BTCUSDT") نگه داشته میشن
-    (برای هشتگ پیام، لینک TradingView و فایل state) و فقط موقع صدا
-    زدن API به فرمت MEXC تبدیل میشن.
-  - کندل‌های MEXC ستونی (column-oriented) برمی‌گردن، نه ردیفی؛ اینجا
-    نرمالایز میشن به همون فرمت آرایه‌ای بایننس که بقیه‌ی کد ازش
-    استفاده می‌کنه: [open_time_ms, open, high, low, close, vol,
-    close_time_ms, quote_turnover].
-  - "amount" (گردش مالی/ترنوور به quote asset) هم‌جای quoteVolume
-    بایننس استفاده میشه (برای Vol 1h/24h/7d تو پیام).
-  - "vol" (حجم به تعداد قرارداد) هم‌جای base volume بایننس استفاده
-    میشه؛ چون این مقدار فقط برای مقایسه‌ی نسبی کندل فعلی با قبلی
-    (no_volume tag) به کار میره، نه مقدار مطلق، اختلاف واحد مشکلی
-    ایجاد نمی‌کنه.
-  - سقف نرخ درخواست MEXC فیوچرز نسبت به بایننس تنگ‌تره (kline: ۲۰
-    درخواست/۲ ثانیه، ticker/depth: ۱۰ درخواست/۲ ثانیه)، پس
-    REQUEST_SLEEP بالاتر از قبل تنظیم شده.
+نکات فنی:
+  - فرمت نماد بایننس همون فرمت داخلی بدون آندرلاینه ("BTCUSDT")،
+    اینتروال‌هاش هم دقیقاً همون رشته‌های داخلی (15m, 1h, 4h, 1d, ...)
+    هستن - نیازی به تبدیل نیست.
+  - فرمت نماد MEXC با آندرلاین جداست ("BTC_USDT") و اینتروال‌هاش
+    اسم متفاوت دارن (Min15, Hour4, ...)؛ این تبدیل‌ها فقط موقع صدا
+    زدن API مکسی انجام میشه.
+  - مارکت‌کپ/رنک (CoinGecko) از این نسخه کاملاً حذف شده تا سرعت اسکن
+    بیشتر بشه.
+  - خط 🕒 تو پیام تلگرام، زمان بسته‌شدن کندل رو نشون میده (نه زمان
+    ارسال پیام). اگه چند تایم‌فریم تو یه پیام باشن، جدیدترین زمان
+    بسته‌شدن کندل بینشون نمایش داده میشه.
 
 نصب پیش‌نیازها:
     pip install requests
@@ -53,13 +51,7 @@ USDT-M Perpetual) عوض شد؛ چون بایننس فیوچرز خیلی از �
     export TELEGRAM_CHAT_ID="..."
 
 اجرای محلی با cron (مثال: هر ۱۵ دقیقه):
-    */15 * * * * TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy /usr/bin/python3 /path/to/mexc_futures_setup_alert_bot.py >> /path/to/bot.log 2>&1
-
-نکته درباره‌ی داده‌ی مارکت‌کپ: MEXC مارکت‌کپ/رنک نمی‌ده، پس این
-اسکریپت یک‌بار در ابتدای هر اجرا، چند صفحه از CoinGecko (API عمومی و
-رایگان) رو فقط برای نمایش تو پیام می‌گیره. اگه این بخش با خطا یا
-محدودیت مواجه بشه، اسکریپت متوقف نمیشه؛ فقط خط مارکت‌کپ تو پیام
-"یافت نشد" نشون داده میشه.
+    */15 * * * * TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy /usr/bin/python3 /path/to/setup_alert_bot.py >> /path/to/bot.log 2>&1
 """
 
 import json
@@ -81,9 +73,9 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۰۰ قرارداد برتر بر اساس حجم معاملات فیوچرز
+TOP_N = int(os.environ.get("TOP_N", "400"))   # ۲۰۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
-# فقط قراردادهای Perpetual (نه Delivery) در نظر گرفته میشن
+# فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
 
 MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.5"))
@@ -97,7 +89,7 @@ SHADOW_MAX_BULL_OPPOSITE_PCT = float(os.environ.get("SHADOW_MAX_BULL_OPPOSITE_PC
 SHADOW_MAX_BEAR_OPPOSITE_PCT = float(os.environ.get("SHADOW_MAX_BEAR_OPPOSITE_PCT", "50.0"))
 
 # درصد تلورانس (انعطاف) برای همه‌ی نسبت‌های سایه بالا
-SHADOW_TOLERANCE_PERCENT = float(os.environ.get("SHADOW_TOLERANCE_PERCENT", "10.0"))
+SHADOW_TOLERANCE_PERCENT = float(os.environ.get("SHADOW_TOLERANCE_PERCENT", "20.0"))
 
 SMA_FAST_LEN = int(os.environ.get("SMA_FAST_LEN", "7"))
 SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
@@ -112,8 +104,6 @@ ADX_SMOOTHING = int(os.environ.get("ADX_SMOOTHING", "14"))
 ADX_THRESHOLD = float(os.environ.get("ADX_THRESHOLD", "20.0"))
 
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
-RSI_BULLISH_HOT = 60   # اگه سیگنال لانگه و RSI بالای این عدد -> هایلایت
-RSI_BEARISH_HOT = 30   # اگه سیگنال شورته و RSI زیر این عدد -> هایلایت
 
 # --- تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation) ---
 USE_HTF_CONFIRM = os.environ.get("USE_HTF_CONFIRM", "1") == "1"
@@ -138,22 +128,19 @@ HTF_KLINES_LIMIT = max(SMA_TREND_LEN + 5, 110)
 ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))
 ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "10"))
 
-# CoinGecko (فقط برای نمایش مارکت‌کپ/رنک تو پیام؛ در انتخاب نماد نقشی نداره)
-COINGECKO_BASE = "https://api.coingecko.com/api/v3"
-COINGECKO_ENABLED = os.environ.get("COINGECKO_ENABLED", "1") == "1"
-COINGECKO_PAGES = int(os.environ.get("COINGECKO_PAGES", "5"))       # هر صفحه ۲۵۰ کوین
-COINGECKO_SLEEP = float(os.environ.get("COINGECKO_SLEEP", "1.2"))
-
 STATE_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "alert_state.json"
 )
 
-# API فیوچرز MEXC (USDT-M Perpetual). فقط همین صرافی استفاده میشه، بدون fallback.
-MEXC_FUTURES_BASE = "https://contract.mexc.com"
+# --- بایننس اسپات (اولویت اول) ---
+BINANCE_SPOT_BASE = "https://api.binance.com"
+BINANCE_REQUEST_SLEEP = float(os.environ.get("BINANCE_REQUEST_SLEEP", "0.08"))
+BINANCE_DEPTH_VALID_LIMITS = [5, 10, 20, 50, 100, 500, 1000, 5000]
 
-# سقف نرخ MEXC فیوچرز تنگ‌تر از بایننسه (kline: 20/2s, ticker/depth: 10/2s)
-REQUEST_SLEEP = float(os.environ.get("REQUEST_SLEEP", "0.25"))
+# --- MEXC فیوچرز (اولویت دوم / fallback) ---
+MEXC_FUTURES_BASE = "https://contract.mexc.com"
+MEXC_REQUEST_SLEEP = float(os.environ.get("MEXC_REQUEST_SLEEP", os.environ.get("REQUEST_SLEEP", "0.25")))
 
 # نگاشت تایم‌فریم داخلی (سبک بایننس) به اینتروال MEXC فیوچرز
 MEXC_INTERVAL_MAP = {
@@ -169,7 +156,7 @@ MEXC_INTERVAL_MAP = {
     "1M": "Month1",
 }
 
-# نگاشت تایم‌فریم بایننس به فرمت اینتروال TradingView
+# نگاشت تایم‌فریم به فرمت اینتروال TradingView
 TV_INTERVAL_MAP = {
     "1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30",
     "1h": "60", "2h": "120", "4h": "240", "6h": "360", "8h": "480",
@@ -210,7 +197,122 @@ def interval_to_ms(interval: str) -> int:
     return value * multipliers.get(unit, 60_000)
 
 
-def get_all_symbols(quote_asset: str):
+# --------------------------- بایننس اسپات ---------------------------
+
+def get_binance_all_symbols(quote_asset: str):
+    """همه‌ی نمادهای اسپات فعال بایننس با quote asset مشخص‌شده."""
+    url = f"{BINANCE_SPOT_BASE}/api/v3/exchangeInfo"
+
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as e:
+        print(f"[ERROR] گرفتن لیست نمادهای بایننس اسپات شکست خورد: {e}")
+        return []
+
+    symbols = []
+    for s in payload.get("symbols", []):
+        if s.get("status") != "TRADING":
+            continue
+        if s.get("quoteAsset") != quote_asset:
+            continue
+        if not s.get("isSpotTradingAllowed", True):
+            continue
+
+        sym = s.get("symbol")
+        if sym:
+            symbols.append(sym)
+
+    return symbols
+
+
+def get_binance_top_symbols_by_volume(quote_asset: str):
+    """نمادهای معتبر بایننس اسپات، مرتب‌شده نزولی بر اساس گردش مالی ۲۴ ساعته."""
+    valid_symbols = get_binance_all_symbols(quote_asset)
+    if not valid_symbols:
+        return []
+
+    valid_set = set(valid_symbols)
+    url = f"{BINANCE_SPOT_BASE}/api/v3/ticker/24hr"
+
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[ERROR] گرفتن حجم ۲۴ ساعته بایننس شکست خورد: {e}")
+        return [(s, 0.0) for s in valid_symbols]
+
+    rows = []
+    for row in data:
+        sym = row.get("symbol")
+        if sym not in valid_set:
+            continue
+
+        try:
+            qv = float(row.get("quoteVolume", 0))
+        except (TypeError, ValueError):
+            qv = 0.0
+
+        rows.append((sym, qv))
+
+    rows.sort(key=lambda x: x[1], reverse=True)
+
+    return rows
+
+
+def get_binance_klines(symbol: str, interval: str, limit: int):
+    """کندل‌های اسپات بایننس - فرمت پیش‌فرض بایننس همون فرمتیه که کد ازش استفاده می‌کنه."""
+    url = f"{BINANCE_SPOT_BASE}/api/v3/klines"
+    params = {"symbol": symbol, "interval": interval, "limit": limit}
+
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+
+    rows = []
+    for k in data:
+        rows.append([
+            int(k[0]),     # open_time_ms
+            float(k[1]),   # open
+            float(k[2]),   # high
+            float(k[3]),   # low
+            float(k[4]),   # close
+            float(k[5]),   # base volume
+            int(k[6]),     # close_time_ms
+            float(k[7]),   # quote asset volume (turnover)
+        ])
+
+    return rows
+
+
+def get_binance_ticker_24hr_quote_volume(symbol: str):
+    url = f"{BINANCE_SPOT_BASE}/api/v3/ticker/24hr"
+    resp = requests.get(url, params={"symbol": symbol}, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+
+    return float(data.get("quoteVolume", 0))
+
+
+def get_binance_depth(symbol: str, limit: int):
+    url = f"{BINANCE_SPOT_BASE}/api/v3/depth"
+    lim = min(BINANCE_DEPTH_VALID_LIMITS, key=lambda x: abs(x - limit))
+
+    resp = requests.get(url, params={"symbol": symbol, "limit": lim}, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+
+    bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
+    asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
+
+    return bids, asks
+
+
+# --------------------------- MEXC فیوچرز ---------------------------
+
+def get_mexc_all_symbols(quote_asset: str):
     """
     همه‌ی قراردادهای فیوچرز فعال (Perpetual) با quote asset مشخص‌شده رو
     از MEXC فیوچرز برمی‌گردونه (فرمت داخلی، بدون آندرلاین).
@@ -253,17 +355,11 @@ def get_all_symbols(quote_asset: str):
     return symbols
 
 
-def get_top_symbols_by_volume(quote_asset: str, top_n: int):
-    """
-    نمادهای فیوچرز معتبر با quote asset مشخص‌شده رو می‌گیره و بر اساس
-    گردش مالی ۲۴ ساعته (amount24) مرتب می‌کنه.
-    """
-    valid_symbols = get_all_symbols(quote_asset)
-
+def get_mexc_top_symbols_by_volume(quote_asset: str):
+    """نمادهای معتبر فیوچرز MEXC، مرتب‌شده نزولی بر اساس گردش مالی ۲۴ ساعته."""
+    valid_symbols = get_mexc_all_symbols(quote_asset)
     if not valid_symbols:
         return []
-
-    valid_symbols_set = set(valid_symbols)
 
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
 
@@ -273,7 +369,7 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
         payload = resp.json()
     except Exception as e:
         print(f"[ERROR] گرفتن حجم ۲۴ ساعته فیوچرز MEXC شکست خورد: {e}")
-        return valid_symbols[:top_n]
+        return [(s, 0.0) for s in valid_symbols]
 
     data = payload.get("data", [])
     if isinstance(data, dict):
@@ -301,14 +397,14 @@ def get_top_symbols_by_volume(quote_asset: str, top_n: int):
 
     rows.sort(key=lambda x: x[1], reverse=True)
 
-    return [symbol for symbol, _ in rows[:top_n] if symbol in valid_symbols_set]
+    return rows
 
 
-def get_klines(symbol: str, interval: str, limit: int):
+def get_mexc_klines(symbol: str, interval: str, limit: int):
     """
     کندل‌های فیوچرز MEXC رو می‌گیره و به همون فرمت ردیفی بایننس نرمالایز
     می‌کنه: [open_time_ms, open, high, low, close, vol, close_time_ms,
-    quote_turnover, ...]
+    quote_turnover]
     """
     mexc_interval = MEXC_INTERVAL_MAP.get(interval)
     if not mexc_interval:
@@ -358,6 +454,190 @@ def get_klines(symbol: str, interval: str, limit: int):
 
     return rows[-limit:] if limit else rows
 
+
+def get_mexc_ticker_24hr_quote_volume(symbol: str):
+    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
+    resp = requests.get(url, params={"symbol": mexc_symbol}, timeout=15)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    if not payload.get("success", True):
+        raise RuntimeError(f"MEXC futures ticker error: {payload}")
+
+    data = payload.get("data") or {}
+    if isinstance(data, list):
+        data = data[0] if data else {}
+
+    return float(data.get("amount24", 0))
+
+
+def get_mexc_depth(symbol: str, limit: int):
+    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
+    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/depth/{mexc_symbol}"
+
+    resp = requests.get(url, params={"limit": limit}, timeout=15)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    if not payload.get("success", True):
+        raise RuntimeError(f"MEXC futures depth error: {payload}")
+
+    data = payload.get("data") or {}
+    raw_bids = data.get("bids", [])
+    raw_asks = data.get("asks", [])
+
+    # هر ردیف MEXC به فرمت [price, vol, count] هست؛ فقط price و vol لازمه
+    bids = [(float(row[0]), float(row[1])) for row in raw_bids]
+    asks = [(float(row[0]), float(row[1])) for row in raw_asks]
+
+    return bids, asks
+
+
+# ------------------------- دیسپچر چند-صرافی -------------------------
+
+def get_top_symbols_combined(quote_asset: str, top_n: int):
+    """
+    اولویت با بایننس اسپاته. نمادهایی که تو بایننس نیستن (فقط تو
+    مکسی فیوچرز موجودن) به استخر اضافه میشن. کل استخر بر اساس حجم
+    ۲۴ساعته مرتب و TOP_N تاش برداشته میشه. خروجی: (symbols, source_map)
+    """
+    binance_rows = get_binance_top_symbols_by_volume(quote_asset)
+    binance_symbol_set = {s for s, _ in binance_rows}
+
+    mexc_rows_all = get_mexc_top_symbols_by_volume(quote_asset)
+    mexc_only_rows = [(s, v) for s, v in mexc_rows_all if s not in binance_symbol_set]
+
+    combined = (
+        [(s, v, "binance") for s, v in binance_rows]
+        + [(s, v, "mexc") for s, v in mexc_only_rows]
+    )
+    combined.sort(key=lambda x: x[1], reverse=True)
+
+    top = combined[:top_n]
+
+    symbols = [s for s, _, _ in top]
+    source_map = {s: src for s, _, src in top}
+
+    binance_count = sum(1 for _, _, src in top if src == "binance")
+    mexc_count = len(top) - binance_count
+
+    print(
+        f"[INFO] نمادهای انتخابی: {binance_count} از بایننس (اسپات)، "
+        f"{mexc_count} از مکسی فیوچرز (از بین {len(top)} نماد)"
+    )
+
+    return symbols, source_map
+
+
+def get_klines(symbol: str, interval: str, limit: int, source: str):
+    if source == "binance":
+        return get_binance_klines(symbol, interval, limit)
+    return get_mexc_klines(symbol, interval, limit)
+
+
+def get_extra_volumes(symbol: str, source: str):
+    vol_1h = None
+    vol_24h = None
+    vol_7d = None
+
+    try:
+        k1m = get_klines(symbol, "1m", 60, source)
+        vol_1h = sum(float(k[7]) for k in k1m)
+    except Exception as e:
+        print(f"[WARN] volume 1h {symbol}: {e}")
+
+    try:
+        if source == "binance":
+            vol_24h = get_binance_ticker_24hr_quote_volume(symbol)
+        else:
+            vol_24h = get_mexc_ticker_24hr_quote_volume(symbol)
+    except Exception as e:
+        print(f"[WARN] volume 24h {symbol}: {e}")
+
+    try:
+        k1d = get_klines(symbol, "1d", 7, source)
+        vol_7d = sum(float(k[7]) for k in k1d)
+    except Exception as e:
+        print(f"[WARN] volume 7d {symbol}: {e}")
+
+    return vol_1h, vol_24h, vol_7d
+
+
+def _price_zone_stats(orders):
+    if not orders:
+        return None, None, None
+
+    total_qty = sum(q for _, q in orders)
+    if total_qty <= 0:
+        return None, None, None
+
+    weighted_avg_price = sum(p * q for p, q in orders) / total_qty
+    prices = [p for p, _ in orders]
+
+    return weighted_avg_price, min(prices), max(prices)
+
+
+def get_order_book_summary(symbol: str, source: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
+    if source == "binance":
+        bids, asks = get_binance_depth(symbol, limit)
+    else:
+        bids, asks = get_mexc_depth(symbol, limit)
+
+    if not bids and not asks:
+        raise RuntimeError(f"گرفتن اردربوک {symbol} شکست خورد (پاسخ خالی)")
+
+    total_bid_qty = sum(q for _, q in bids)
+    total_ask_qty = sum(q for _, q in asks)
+
+    total_bid_notional = sum(p * q for p, q in bids)
+    total_ask_notional = sum(p * q for p, q in asks)
+
+    top_bids = sorted(bids, key=lambda x: x[1], reverse=True)[:top_n]
+    top_asks = sorted(asks, key=lambda x: x[1], reverse=True)[:top_n]
+
+    top_bids_notional = sum(p * q for p, q in top_bids)
+    top_asks_notional = sum(p * q for p, q in top_asks)
+
+    bid_wavg_price, bid_price_min, bid_price_max = _price_zone_stats(top_bids)
+    ask_wavg_price, ask_price_min, ask_price_max = _price_zone_stats(top_asks)
+
+    imbalance_pct = None
+    denom = total_bid_qty + total_ask_qty
+    if denom > 0:
+        imbalance_pct = (total_bid_qty - total_ask_qty) / denom * 100
+
+    return {
+        "total_bid_notional": total_bid_notional,
+        "total_ask_notional": total_ask_notional,
+        "top_bids_notional": top_bids_notional,
+        "top_asks_notional": top_asks_notional,
+        "imbalance_pct": imbalance_pct,
+        "bid_wavg_price": bid_wavg_price,
+        "bid_price_min": bid_price_min,
+        "bid_price_max": bid_price_max,
+        "ask_wavg_price": ask_wavg_price,
+        "ask_price_min": ask_price_min,
+        "ask_price_max": ask_price_max,
+    }
+
+
+def tradingview_link(symbol: str, timeframe: str, source: str) -> str:
+    tv_interval = TV_INTERVAL_MAP.get(timeframe, "")
+
+    if source == "binance":
+        link = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}"
+    else:
+        # ".P" یعنی چارت پرپچوال فیوچرز تو TradingView
+        link = f"https://www.tradingview.com/chart/?symbol=MEXC:{symbol}.P"
+
+    if tv_interval:
+        link += f"&interval={tv_interval}"
+
+    return link
+
+
+# --------------------------- اندیکاتورها ---------------------------
 
 def sma(values, length):
     result = [None] * len(values)
@@ -482,9 +762,9 @@ def get_htf_timeframe(base_timeframe: str) -> str:
     return MANUAL_HTF
 
 
-def get_htf_sma_stack(symbol: str, htf_timeframe: str):
+def get_htf_sma_stack(symbol: str, htf_timeframe: str, source: str):
     try:
-        raw = get_klines(symbol, htf_timeframe, HTF_KLINES_LIMIT)
+        raw = get_klines(symbol, htf_timeframe, HTF_KLINES_LIMIT, source)
     except Exception as e:
         print(f"[WARN] HTF klines {symbol} {htf_timeframe}: {e}")
         return None
@@ -517,17 +797,6 @@ def get_htf_sma_stack(symbol: str, htf_timeframe: str):
     return htf_stack_bull, htf_stack_bear
 
 
-def tradingview_link(symbol: str, timeframe: str) -> str:
-    tv_interval = TV_INTERVAL_MAP.get(timeframe, "")
-    # ".P" یعنی چارت پرپچوال فیوچرز تو TradingView
-    link = f"https://www.tradingview.com/chart/?symbol=MEXC:{symbol}.P"
-
-    if tv_interval:
-        link += f"&interval={tv_interval}"
-
-    return link
-
-
 def human_number(n):
     if n is None:
         return "N/A"
@@ -547,181 +816,14 @@ def human_number(n):
     return f"{sign}{n:.2f}"
 
 
-def get_ticker_24hr_quote_volume(symbol: str):
-    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
-    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
-    resp = requests.get(url, params={"symbol": mexc_symbol}, timeout=15)
-    resp.raise_for_status()
-    payload = resp.json()
-
-    if not payload.get("success", True):
-        raise RuntimeError(f"MEXC futures ticker error: {payload}")
-
-    data = payload.get("data") or {}
-    if isinstance(data, list):
-        data = data[0] if data else {}
-
-    return float(data.get("amount24", 0))
-
-
-def get_extra_volumes(symbol: str):
-    vol_1h = None
-    vol_24h = None
-    vol_7d = None
-
-    try:
-        k1m = get_klines(symbol, "1m", 60)
-        vol_1h = sum(float(k[7]) for k in k1m)
-    except Exception as e:
-        print(f"[WARN] volume 1h {symbol}: {e}")
-
-    try:
-        vol_24h = get_ticker_24hr_quote_volume(symbol)
-    except Exception as e:
-        print(f"[WARN] volume 24h {symbol}: {e}")
-
-    try:
-        k1d = get_klines(symbol, "1d", 7)
-        vol_7d = sum(float(k[7]) for k in k1d)
-    except Exception as e:
-        print(f"[WARN] volume 7d {symbol}: {e}")
-
-    return vol_1h, vol_24h, vol_7d
-
-
-def _price_zone_stats(orders):
-    if not orders:
-        return None, None, None
-
-    total_qty = sum(q for _, q in orders)
-    if total_qty <= 0:
-        return None, None, None
-
-    weighted_avg_price = sum(p * q for p, q in orders) / total_qty
-    prices = [p for p, _ in orders]
-
-    return weighted_avg_price, min(prices), max(prices)
-
-
-def get_order_book_summary(symbol: str, limit: int = ORDERBOOK_LIMIT, top_n: int = ORDERBOOK_WALL_TOP_N):
-    mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
-    url = f"{MEXC_FUTURES_BASE}/api/v1/contract/depth/{mexc_symbol}"
-
-    resp = requests.get(url, params={"limit": limit}, timeout=15)
-    resp.raise_for_status()
-    payload = resp.json()
-
-    if not payload.get("success", True):
-        raise RuntimeError(f"MEXC futures depth error: {payload}")
-
-    data = payload.get("data") or {}
-    raw_bids = data.get("bids", [])
-    raw_asks = data.get("asks", [])
-
-    if not raw_bids and not raw_asks:
-        raise RuntimeError(f"گرفتن اردربوک فیوچرز {symbol} شکست خورد (پاسخ خالی)")
-
-    # هر ردیف MEXC به فرمت [price, vol, count] هست؛ فقط price و vol لازمه
-    bids = [(float(row[0]), float(row[1])) for row in raw_bids]
-    asks = [(float(row[0]), float(row[1])) for row in raw_asks]
-
-    total_bid_qty = sum(q for _, q in bids)
-    total_ask_qty = sum(q for _, q in asks)
-
-    total_bid_notional = sum(p * q for p, q in bids)
-    total_ask_notional = sum(p * q for p, q in asks)
-
-    top_bids = sorted(bids, key=lambda x: x[1], reverse=True)[:top_n]
-    top_asks = sorted(asks, key=lambda x: x[1], reverse=True)[:top_n]
-
-    top_bids_notional = sum(p * q for p, q in top_bids)
-    top_asks_notional = sum(p * q for p, q in top_asks)
-
-    bid_wavg_price, bid_price_min, bid_price_max = _price_zone_stats(top_bids)
-    ask_wavg_price, ask_price_min, ask_price_max = _price_zone_stats(top_asks)
-
-    imbalance_pct = None
-    denom = total_bid_qty + total_ask_qty
-    if denom > 0:
-        imbalance_pct = (total_bid_qty - total_ask_qty) / denom * 100
-
-    return {
-        "total_bid_notional": total_bid_notional,
-        "total_ask_notional": total_ask_notional,
-        "top_bids_notional": top_bids_notional,
-        "top_asks_notional": top_asks_notional,
-        "imbalance_pct": imbalance_pct,
-        "bid_wavg_price": bid_wavg_price,
-        "bid_price_min": bid_price_min,
-        "bid_price_max": bid_price_max,
-        "ask_wavg_price": ask_wavg_price,
-        "ask_price_min": ask_price_min,
-        "ask_price_max": ask_price_max,
-    }
-
-
-def load_coingecko_market_map(pages: int = COINGECKO_PAGES):
-    mapping = {}
-
-    if not COINGECKO_ENABLED:
-        return mapping
-
-    for page in range(1, pages + 1):
-        try:
-            resp = requests.get(
-                f"{COINGECKO_BASE}/coins/markets",
-                params={
-                    "vs_currency": "usd",
-                    "order": "market_cap_desc",
-                    "per_page": 250,
-                    "page": page,
-                    "sparkline": "false",
-                },
-                timeout=20,
-            )
-            resp.raise_for_status()
-            rows = resp.json()
-
-            if not rows:
-                break
-
-            for row in rows:
-                symbol = (row.get("symbol") or "").upper()
-                if not symbol:
-                    continue
-
-                rank = row.get("market_cap_rank")
-
-                existing = mapping.get(symbol)
-                if existing and existing["rank"] is not None:
-                    if rank is None or rank >= existing["rank"]:
-                        continue
-
-                mapping[symbol] = {
-                    "market_cap": row.get("market_cap"),
-                    "rank": rank,
-                    "name": row.get("name"),
-                }
-
-            time.sleep(COINGECKO_SLEEP)
-
-        except Exception as e:
-            print(f"[WARN] CoinGecko page {page}: {e}")
-            break
-
-    print(f"[INFO] CoinGecko market map: {len(mapping)} کوین بارگذاری شد.")
-
-    return mapping
-
-
-def evaluate_symbol(symbol: str, timeframe: str):
+def evaluate_symbol(symbol: str, timeframe: str, source: str):
     """
     منطق سیگنال روی آخرین کندل بسته‌شده — دقیقاً مطابق آخرین نسخه‌ی
     اسکریپت Pine v6 (شامل تلورانس درصدی و سقف سایه‌ی مقابل).
-    داده‌ها از MEXC فیوچرز (USDT-M Perpetual) گرفته میشن.
+    داده‌ها بسته به source از بایننس اسپات یا مکسی فیوچرز گرفته میشن.
     """
 
-    raw = get_klines(symbol, timeframe, KLINES_LIMIT)
+    raw = get_klines(symbol, timeframe, KLINES_LIMIT, source)
 
     if not raw or len(raw) < SMA_TREND_LEN + 2:
         return None
@@ -871,7 +973,7 @@ def evaluate_symbol(symbol: str, timeframe: str):
 
     if USE_HTF_CONFIRM:
         htf_timeframe_used = get_htf_timeframe(timeframe)
-        htf_stack = get_htf_sma_stack(symbol, htf_timeframe_used)
+        htf_stack = get_htf_sma_stack(symbol, htf_timeframe_used, source)
 
         if htf_stack is not None:
             htf_stack_bull, htf_stack_bear = htf_stack
@@ -887,10 +989,12 @@ def evaluate_symbol(symbol: str, timeframe: str):
         "htf_confirm": htf_confirm,
         "htf_timeframe": htf_timeframe_used,
         "candle_open_ms": open_times[idx],
+        "candle_close_ms": close_times[idx],
         "close_price": c,
         "rsi_value": rsi_value,
         "adx_value": adx_val,
         "candles_ago": candles_ago,
+        "source": source,
     }
 
 
@@ -947,7 +1051,7 @@ def send_telegram(text: str):
         print(f"[TELEGRAM EXCEPTION] {e}")
 
 
-def build_symbol_message(symbol, tf_results, coingecko_map):
+def build_symbol_message(symbol, tf_results, source):
     """
     پیام واحد برای یک نماد که ممکنه شامل سیگنال چند تایم‌فریم باشه.
 
@@ -959,11 +1063,10 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
 
       📊 Vol: 1h 163K | 24h 13.3M | 7d 81M
       📖 OrderBook: Buy 187K / Sell 247K (-12.6%)
-      🏆 MCap: 540M | Rank #101
 
       🔗 <tradingview link>
 
-      🕒 2026-09-02 07:30 UTC | 11:00 (+3:30)
+      🕒 2026-09-02 07:15 UTC | 10:45 (+3:30)   <- زمان بسته‌شدن کندل
     """
 
     first_signal = tf_results[0][1]["signal"]
@@ -995,14 +1098,14 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
             f"💰 {res['close_price']}{no_volume_suffix}"
         )
 
-    vol_1h, vol_24h, vol_7d = get_extra_volumes(symbol)
+    vol_1h, vol_24h, vol_7d = get_extra_volumes(symbol, source)
     volume_line = (
         f"📊 Vol: 1h {human_number(vol_1h)} | "
         f"24h {human_number(vol_24h)} | 7d {human_number(vol_7d)}"
     )
 
     try:
-        ob = get_order_book_summary(symbol)
+        ob = get_order_book_summary(symbol, source)
     except Exception as e:
         print(f"[WARN] orderbook {symbol}: {e}")
         ob = None
@@ -1020,31 +1123,24 @@ def build_symbol_message(symbol, tf_results, coingecko_map):
     else:
         orderbook_line = "📖 OrderBook: N/A"
 
-    base_asset = symbol[:-len(QUOTE_ASSET)] if symbol.endswith(QUOTE_ASSET) else symbol
-    mcap_info = coingecko_map.get(base_asset)
-    if mcap_info:
-        rank_str = f"#{mcap_info['rank']}" if mcap_info["rank"] else "N/A"
-        mcap_line = f"🏆 MCap: {human_number(mcap_info['market_cap'])} | Rank {rank_str}"
-    else:
-        mcap_line = "🏆 MCap: N/A"
-
-    tv_link = tradingview_link(symbol, tf_results[0][0])
+    tv_link = tradingview_link(symbol, tf_results[0][0], source)
 
     tf_block = "\n".join(lines_per_tf)
 
-    now_utc = datetime.now(timezone.utc)
-    now_tehran = now_utc + TEHRAN_OFFSET
+    # زمان بسته‌شدن کندل (نه زمان ارسال پیام) - جدیدترین بین تایم‌فریم‌های این پیام
+    latest_close_ms = max(res["candle_close_ms"] for _, res in tf_results)
+    close_utc = datetime.fromtimestamp(latest_close_ms / 1000, tz=timezone.utc)
+    close_tehran = close_utc + TEHRAN_OFFSET
     time_line = (
-        f"🕒 {now_utc.strftime('%Y-%m-%d %H:%M')} UTC | "
-        f"{now_tehran.strftime('%H:%M')} (+3:30)"
+        f"🕒 {close_utc.strftime('%Y-%m-%d %H:%M')} UTC | "
+        f"{close_tehran.strftime('%H:%M')} (+3:30)"
     )
 
     msg = (
         f"{header_line}\n\n"
         f"{tf_block}\n\n"
         f"{volume_line}\n"
-        f"{orderbook_line}\n"
-        f"{mcap_line}\n\n"
+        f"{orderbook_line}\n\n"
         f"🔗 {tv_link}\n\n"
         f"{time_line}"
     )
@@ -1062,15 +1158,14 @@ def main():
 
     state = load_state()
 
-    coingecko_map = load_coingecko_market_map()
-
-    symbols = get_top_symbols_by_volume(QUOTE_ASSET, TOP_N)
+    symbols, source_map = get_top_symbols_combined(QUOTE_ASSET, TOP_N)
 
     print(
         f"[{datetime.now(timezone.utc).isoformat()}] "
-        f"Checking top {len(symbols)} FUTURES symbols "
-        f"(by MEXC Futures 24h turnover, TOP_N={TOP_N}) on timeframes {TIMEFRAMES}... "
-        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'}, exchange: mexc-futures)"
+        f"Checking top {len(symbols)} symbols "
+        f"(priority: Binance Spot, fallback: MEXC Futures, TOP_N={TOP_N}) "
+        f"on timeframes {TIMEFRAMES}... "
+        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'})"
     )
 
     bullish_count = 0
@@ -1083,19 +1178,22 @@ def main():
 
     for symbol in symbols:
 
+        source = source_map[symbol]
+        sleep_time = BINANCE_REQUEST_SLEEP if source == "binance" else MEXC_REQUEST_SLEEP
+
         tf_results = []
 
         for timeframe in TIMEFRAMES:
 
             try:
-                result = evaluate_symbol(symbol, timeframe)
+                result = evaluate_symbol(symbol, timeframe, source)
 
             except Exception as e:
                 print(
-                    f"[ERROR] {symbol} {timeframe}: {e}"
+                    f"[ERROR] {symbol} ({source}) {timeframe}: {e}"
                 )
 
-                time.sleep(REQUEST_SLEEP)
+                time.sleep(sleep_time)
                 continue
 
             if result:
@@ -1108,7 +1206,7 @@ def main():
                         f"[SKIP-DUP] {symbol} {timeframe}: "
                         f"سیگنال تکراریه (قبلاً روی همین کندل فرستاده شده)"
                     )
-                    time.sleep(REQUEST_SLEEP)
+                    time.sleep(sleep_time)
                     continue
 
                 tf_results.append((timeframe, result))
@@ -1128,13 +1226,13 @@ def main():
                 state[key] = result["candle_open_ms"]
 
                 print(
-                    f"[SIGNAL] {symbol} {timeframe}: {result['signal']} "
+                    f"[SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
                     f"(risky={result['risky']}, no_volume={result['no_volume']}, "
                     f"htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
                     f"RSI={result['rsi_value']}, ADX={result['adx_value']})"
                 )
 
-            time.sleep(REQUEST_SLEEP)
+            time.sleep(sleep_time)
 
         def _is_delayed(res):
             return res["risky"] or res.get("htf_confirm") is False
@@ -1143,12 +1241,12 @@ def main():
         delayed_tf_results = [(tf, res) for tf, res in tf_results if _is_delayed(res)]
 
         if normal_tf_results:
-            msg = build_symbol_message(symbol, normal_tf_results, coingecko_map)
+            msg = build_symbol_message(symbol, normal_tf_results, source)
             send_telegram(msg)
             messages_sent += 1
 
         if delayed_tf_results:
-            delayed_signals.append((symbol, delayed_tf_results))
+            delayed_signals.append((symbol, delayed_tf_results, source))
 
     save_state(state)
 
@@ -1158,8 +1256,8 @@ def main():
             f"تعداد: {len(delayed_signals)} نماد"
         )
 
-        for symbol, delayed_tf_results in delayed_signals:
-            msg = build_symbol_message(symbol, delayed_tf_results, coingecko_map)
+        for symbol, delayed_tf_results, source in delayed_signals:
+            msg = build_symbol_message(symbol, delayed_tf_results, source)
             send_telegram(msg)
             messages_sent += 1
 
