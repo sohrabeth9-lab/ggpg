@@ -73,7 +73,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "400"))   # ۲۰۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
+TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۰۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
@@ -134,8 +134,14 @@ STATE_FILE = os.path.join(
 )
 
 # --- بایننس اسپات (اولویت اول) ---
-BINANCE_SPOT_BASE = "https://api.binance.com"
-BINANCE_REQUEST_SLEEP = float(os.environ.get("BINANCE_REQUEST_SLEEP", "0.08"))
+# نکته: api.binance.com خیلی از سرورها/آی‌پی‌ها رو با خطای 451 (محدودیت
+# جغرافیایی) بلاک می‌کنه. data-api.binance.vision یه آینه‌ی رسمی و
+# بدون‌نیاز-به-کلید از بایننسه که فقط داده‌ی عمومی بازار (exchangeInfo,
+# klines, depth, ticker) رو می‌ده و ساخته شده دقیقاً برای دورزدن همین
+# محدودیت جغرافیایی روی درخواست‌های صرفاً اطلاعاتی (نه ترید). اگه باز
+# هم بلاک شد، با متغیر محیطی BINANCE_SPOT_BASE می‌تونی عوضش کنی.
+BINANCE_SPOT_BASE = os.environ.get("BINANCE_SPOT_BASE", "https://data-api.binance.vision")
+BINANCE_REQUEST_SLEEP = float(os.environ.get("BINANCE_REQUEST_SLEEP", "0.05"))
 BINANCE_DEPTH_VALID_LIMITS = [5, 10, 20, 50, 100, 500, 1000, 5000]
 
 # --- MEXC فیوچرز (اولویت دوم / fallback) ---
@@ -505,6 +511,14 @@ def get_top_symbols_combined(quote_asset: str, top_n: int):
     binance_rows = get_binance_top_symbols_by_volume(quote_asset)
     binance_symbol_set = {s for s, _ in binance_rows}
 
+    if not binance_rows:
+        print(
+            "[WARNING] لیست بایننس خالی برگشت (خطای شبکه/API) — این اجرا "
+            "همه‌ی نمادها موقتاً از مکسی فیوچرز حساب میشن، حتی اونایی که "
+            "واقعاً تو بایننس هم هستن. اگه این هشدار مکرر دیدی، دسترسی به "
+            "api.binance.com رو چک کن."
+        )
+
     mexc_rows_all = get_mexc_top_symbols_by_volume(quote_asset)
     mexc_only_rows = [(s, v) for s, v in mexc_rows_all if s not in binance_symbol_set]
 
@@ -620,6 +634,21 @@ def get_order_book_summary(symbol: str, source: str, limit: int = ORDERBOOK_LIMI
         "ask_price_min": ask_price_min,
         "ask_price_max": ask_price_max,
     }
+
+
+def market_search_links(symbol: str, quote_asset: str):
+    """
+    لینک جستجوی CoinGecko و CoinMarketCap برای نماد - بدون هیچ درخواست
+    API (چون اسلاگ دقیق صفحه‌ی هر کوین با ticker یکی نیست، به‌جای صفحه‌ی
+    دقیق، لینک جستجو ساخته میشه که همیشه کار می‌کنه و صفر هزینه‌ی زمانی
+    داره).
+    """
+    base_asset = symbol[:-len(quote_asset)] if symbol.endswith(quote_asset) else symbol
+
+    coingecko_link = f"https://www.coingecko.com/en/search?query={base_asset}"
+    cmc_link = f"https://coinmarketcap.com/search/?q={base_asset}"
+
+    return coingecko_link, cmc_link
 
 
 def tradingview_link(symbol: str, timeframe: str, source: str) -> str:
@@ -1065,6 +1094,8 @@ def build_symbol_message(symbol, tf_results, source):
       📖 OrderBook: Buy 187K / Sell 247K (-12.6%)
 
       🔗 <tradingview link>
+      🦎 <coingecko search link>
+      💹 <coinmarketcap search link>
 
       🕒 2026-09-02 07:15 UTC | 10:45 (+3:30)   <- زمان بسته‌شدن کندل
     """
@@ -1124,6 +1155,7 @@ def build_symbol_message(symbol, tf_results, source):
         orderbook_line = "📖 OrderBook: N/A"
 
     tv_link = tradingview_link(symbol, tf_results[0][0], source)
+    coingecko_link, cmc_link = market_search_links(symbol, QUOTE_ASSET)
 
     tf_block = "\n".join(lines_per_tf)
 
@@ -1141,7 +1173,9 @@ def build_symbol_message(symbol, tf_results, source):
         f"{tf_block}\n\n"
         f"{volume_line}\n"
         f"{orderbook_line}\n\n"
-        f"🔗 {tv_link}\n\n"
+        f"🔗 {tv_link}\n"
+        f"🦎 {coingecko_link}\n"
+        f"💹 {cmc_link}\n\n"
         f"{time_line}"
     )
 
