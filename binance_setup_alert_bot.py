@@ -73,7 +73,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۰۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
+TOP_N = int(os.environ.get("TOP_N", "500"))   # ۲۰۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
@@ -125,7 +125,7 @@ KLINES_LIMIT = max(SMA_TREND_LEN + 5, ADX_LEN + ADX_SMOOTHING + 20, 120)
 HTF_KLINES_LIMIT = max(SMA_TREND_LEN + 5, 110)
 
 # اردربوک
-ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "20"))
+ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))
 ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "10"))
 
 STATE_FILE = os.path.join(
