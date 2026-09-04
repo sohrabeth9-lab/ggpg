@@ -125,7 +125,7 @@ KLINES_LIMIT = max(SMA_TREND_LEN + 5, ADX_LEN + ADX_SMOOTHING + 20, 120)
 HTF_KLINES_LIMIT = max(SMA_TREND_LEN + 5, 110)
 
 # اردربوک
-ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "100"))
+ORDERBOOK_LIMIT = int(os.environ.get("ORDERBOOK_LIMIT", "200"))
 ORDERBOOK_WALL_TOP_N = int(os.environ.get("ORDERBOOK_WALL_TOP_N", "10"))
 
 STATE_FILE = os.path.join(
