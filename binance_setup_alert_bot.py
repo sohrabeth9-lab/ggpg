@@ -89,7 +89,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "100"))   # ۲۰۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
+TOP_N = int(os.environ.get("TOP_N", "250"))   # ۲۵۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
@@ -188,9 +188,10 @@ TEHRAN_OFFSET = timedelta(hours=3, minutes=30)
 
 # --- موازی‌سازی و محافظ ریت‌لیمیت ---
 # چند تا نماد/تایم‌فریم هم‌زمان چک بشن. عدد بالاتر = سریع‌تر، ولی
-# ریسک برخورد به ریت‌لیمیت صرافی هم بیشتر میشه. ۱۰-۱۵ برای این حجم
-# درخواست (TOP_N=100 پیش‌فرض) امن و متعادله.
-MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "12"))
+# ریسک برخورد به ریت‌لیمیت صرافی هم بیشتر میشه. ۲۰ برای این حجم
+# درخواست (TOP_N=250 پیش‌فرض) امن و متعادله؛ محافظ ۴۲۹/۴۱۸ هم پشتش
+# هست اگه به مرز نزدیک بشه.
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "20"))
 
 # اگه یه درخواست با 429 (Too Many Requests) یا 418 (IP Ban موقت) یا
 # خطای شبکه‌ی گذرا مواجه شد، چندبار با فاصله (بک‌آف نمایی) دوباره
