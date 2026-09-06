@@ -30,6 +30,20 @@ Multi-Timeframe
 باشه) از مکسی فیوچرز اضافه میشه. هر نماد با منبعش (source: "binance"
 یا "mexc") تگ میشه و کندل/اردربوک/حجمش هم از همون صرافی گرفته میشه.
 
+--- تغییرات این نسخه (سرعت و پایداری) ---
+  - بررسی نمادها/تایم‌فریم‌ها حالا موازی انجام میشه (ThreadPoolExecutor
+    با MAX_WORKERS کارگر هم‌زمان)، به‌جای یکی‌یکی و پشت سر هم. این
+    زمان کل اسکن رو به‌شدت کم می‌کنه تا از پنجره‌ی ۱۵ دقیقه‌ای cron
+    عقب نیفته.
+  - همه‌ی درخواست‌های HTTP از یه هلسپر مشترک (http_get_with_retry) رد
+    میشن که در برابر ریت‌لیمیت (429) و بن موقت آی‌پی (418) محافظت
+    می‌کنه: با بک‌آف نمایی (یا هدر Retry-After اگه صرافی بفرسته) صبر
+    می‌کنه و خودکار دوباره تلاش می‌کنه، به‌جای اینکه کل اسکن با خطا
+    متوقف بشه.
+  - بخش دیدوپ/شمارش/ارسال پیام (که به state مشترک نیاز داره) بعد از
+    تموم‌شدن فاز موازی و به‌صورت سریال انجام میشه تا هیچ race condition
+    ای رو state ایجاد نشه.
+
 نکات فنی:
   - فرمت نماد بایننس همون فرمت داخلی بدون آندرلاینه ("BTCUSDT")،
     اینتروال‌هاش هم دقیقاً همون رشته‌های داخلی (15m, 1h, 4h, 1d, ...)
@@ -56,7 +70,9 @@ Multi-Timeframe
 
 import json
 import os
+import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -141,12 +157,10 @@ STATE_FILE = os.path.join(
 # محدودیت جغرافیایی روی درخواست‌های صرفاً اطلاعاتی (نه ترید). اگه باز
 # هم بلاک شد، با متغیر محیطی BINANCE_SPOT_BASE می‌تونی عوضش کنی.
 BINANCE_SPOT_BASE = os.environ.get("BINANCE_SPOT_BASE", "https://data-api.binance.vision")
-BINANCE_REQUEST_SLEEP = float(os.environ.get("BINANCE_REQUEST_SLEEP", "0.05"))
 BINANCE_DEPTH_VALID_LIMITS = [5, 10, 20, 50, 100, 500, 1000, 5000]
 
 # --- MEXC فیوچرز (اولویت دوم / fallback) ---
 MEXC_FUTURES_BASE = "https://contract.mexc.com"
-MEXC_REQUEST_SLEEP = float(os.environ.get("MEXC_REQUEST_SLEEP", os.environ.get("REQUEST_SLEEP", "0.25")))
 
 # نگاشت تایم‌فریم داخلی (سبک بایننس) به اینتروال MEXC فیوچرز
 MEXC_INTERVAL_MAP = {
@@ -172,7 +186,66 @@ TV_INTERVAL_MAP = {
 # وقت تهران (Iran Standard Time) = UTC + 3:30
 TEHRAN_OFFSET = timedelta(hours=3, minutes=30)
 
+# --- موازی‌سازی و محافظ ریت‌لیمیت ---
+# چند تا نماد/تایم‌فریم هم‌زمان چک بشن. عدد بالاتر = سریع‌تر، ولی
+# ریسک برخورد به ریت‌لیمیت صرافی هم بیشتر میشه. ۱۰-۱۵ برای این حجم
+# درخواست (TOP_N=100 پیش‌فرض) امن و متعادله.
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "12"))
+
+# اگه یه درخواست با 429 (Too Many Requests) یا 418 (IP Ban موقت) یا
+# خطای شبکه‌ی گذرا مواجه شد، چندبار با فاصله (بک‌آف نمایی) دوباره
+# امتحان میشه قبل از اینکه واقعاً شکست بخوره.
+MAX_HTTP_RETRIES = int(os.environ.get("MAX_HTTP_RETRIES", "4"))
+
 # =======================================================================
+
+
+def http_get_with_retry(url, params=None, timeout=15, max_retries=MAX_HTTP_RETRIES):
+    """
+    یه GET با محافظت در برابر ریت‌لیمیت صرافی‌ها. اگه پاسخ 429 (ریت‌لیمیت)
+    یا 418 (بن موقت آی‌پی) بود، یا یه خطای شبکه‌ی گذرا (تایم‌اوت، قطعی
+    اتصال) یا خطای سمت سرور (5xx) پیش اومد، به‌جای شکست فوری، بر اساس
+    هدر Retry-After (اگه صرافی فرستاده باشه) یا بک‌آف نمایی صبر می‌کنه
+    و دوباره تلاش می‌کنه. بعد از رد شدن از max_retries تلاش، آخرین خطا
+    رو raise می‌کنه (که فراخوان می‌تونه مثل قبل با try/except بگیردش).
+    """
+    last_exc = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            last_exc = e
+            wait = min(2 ** attempt, 20) + random.uniform(0, 0.5)
+            time.sleep(wait)
+            continue
+
+        if resp.status_code in (429, 418):
+            retry_after = resp.headers.get("Retry-After")
+            try:
+                wait = float(retry_after) if retry_after else min(2 ** attempt, 30)
+            except ValueError:
+                wait = min(2 ** attempt, 30)
+
+            wait += random.uniform(0, 0.5)
+            print(
+                f"[RATE-LIMIT] {resp.status_code} از {url} — "
+                f"{wait:.1f} ثانیه صبر و تلاش دوباره (تلاش {attempt + 1}/{max_retries + 1})..."
+            )
+            time.sleep(wait)
+            last_exc = RuntimeError(f"HTTP {resp.status_code} rate-limited: {url}")
+            continue
+
+        if 500 <= resp.status_code < 600:
+            last_exc = RuntimeError(f"HTTP {resp.status_code} server error: {url}")
+            wait = min(2 ** attempt, 15) + random.uniform(0, 0.5)
+            time.sleep(wait)
+            continue
+
+        resp.raise_for_status()
+        return resp
+
+    raise last_exc if last_exc else RuntimeError(f"گرفتن {url} شکست خورد")
 
 
 def to_mexc_symbol(symbol: str, quote_asset: str) -> str:
@@ -210,8 +283,7 @@ def get_binance_all_symbols(quote_asset: str):
     url = f"{BINANCE_SPOT_BASE}/api/v3/exchangeInfo"
 
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
+        resp = http_get_with_retry(url, timeout=15)
         payload = resp.json()
     except Exception as e:
         print(f"[ERROR] گرفتن لیست نمادهای بایننس اسپات شکست خورد: {e}")
@@ -243,8 +315,7 @@ def get_binance_top_symbols_by_volume(quote_asset: str):
     url = f"{BINANCE_SPOT_BASE}/api/v3/ticker/24hr"
 
     try:
-        resp = requests.get(url, timeout=20)
-        resp.raise_for_status()
+        resp = http_get_with_retry(url, timeout=20)
         data = resp.json()
     except Exception as e:
         print(f"[ERROR] گرفتن حجم ۲۴ ساعته بایننس شکست خورد: {e}")
@@ -273,8 +344,7 @@ def get_binance_klines(symbol: str, interval: str, limit: int):
     url = f"{BINANCE_SPOT_BASE}/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
 
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
+    resp = http_get_with_retry(url, params=params, timeout=15)
     data = resp.json()
 
     rows = []
@@ -295,8 +365,7 @@ def get_binance_klines(symbol: str, interval: str, limit: int):
 
 def get_binance_ticker_24hr_quote_volume(symbol: str):
     url = f"{BINANCE_SPOT_BASE}/api/v3/ticker/24hr"
-    resp = requests.get(url, params={"symbol": symbol}, timeout=15)
-    resp.raise_for_status()
+    resp = http_get_with_retry(url, params={"symbol": symbol}, timeout=15)
     data = resp.json()
 
     return float(data.get("quoteVolume", 0))
@@ -306,8 +375,7 @@ def get_binance_depth(symbol: str, limit: int):
     url = f"{BINANCE_SPOT_BASE}/api/v3/depth"
     lim = min(BINANCE_DEPTH_VALID_LIMITS, key=lambda x: abs(x - limit))
 
-    resp = requests.get(url, params={"symbol": symbol, "limit": lim}, timeout=15)
-    resp.raise_for_status()
+    resp = http_get_with_retry(url, params={"symbol": symbol, "limit": lim}, timeout=15)
     data = resp.json()
 
     bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
@@ -326,8 +394,7 @@ def get_mexc_all_symbols(quote_asset: str):
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/detail"
 
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
+        resp = http_get_with_retry(url, timeout=15)
         payload = resp.json()
     except Exception as e:
         print(f"[ERROR] گرفتن لیست قراردادهای فیوچرز MEXC شکست خورد: {e}")
@@ -370,8 +437,7 @@ def get_mexc_top_symbols_by_volume(quote_asset: str):
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
 
     try:
-        resp = requests.get(url, timeout=20)
-        resp.raise_for_status()
+        resp = http_get_with_retry(url, timeout=20)
         payload = resp.json()
     except Exception as e:
         print(f"[ERROR] گرفتن حجم ۲۴ ساعته فیوچرز MEXC شکست خورد: {e}")
@@ -425,8 +491,7 @@ def get_mexc_klines(symbol: str, interval: str, limit: int):
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/kline/{mexc_symbol}"
     params = {"interval": mexc_interval, "start": start, "end": end}
 
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
+    resp = http_get_with_retry(url, params=params, timeout=15)
     payload = resp.json()
 
     if not payload.get("success", True):
@@ -464,8 +529,7 @@ def get_mexc_klines(symbol: str, interval: str, limit: int):
 def get_mexc_ticker_24hr_quote_volume(symbol: str):
     mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/ticker"
-    resp = requests.get(url, params={"symbol": mexc_symbol}, timeout=15)
-    resp.raise_for_status()
+    resp = http_get_with_retry(url, params={"symbol": mexc_symbol}, timeout=15)
     payload = resp.json()
 
     if not payload.get("success", True):
@@ -482,8 +546,7 @@ def get_mexc_depth(symbol: str, limit: int):
     mexc_symbol = to_mexc_symbol(symbol, QUOTE_ASSET)
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/depth/{mexc_symbol}"
 
-    resp = requests.get(url, params={"limit": limit}, timeout=15)
-    resp.raise_for_status()
+    resp = http_get_with_retry(url, params={"limit": limit}, timeout=15)
     payload = resp.json()
 
     if not payload.get("success", True):
@@ -1063,21 +1126,37 @@ def send_telegram(text: str):
         "parse_mode": "HTML"
     }
 
-    try:
-        resp = requests.post(
-            url,
-            data=payload,
-            timeout=15
-        )
-
-        if resp.status_code != 200:
-            print(
-                f"[TELEGRAM ERROR] "
-                f"{resp.status_code}: {resp.text}"
+    for attempt in range(4):
+        try:
+            resp = requests.post(
+                url,
+                data=payload,
+                timeout=15
             )
 
-    except Exception as e:
-        print(f"[TELEGRAM EXCEPTION] {e}")
+            if resp.status_code == 429:
+                try:
+                    retry_after = resp.json().get("parameters", {}).get("retry_after", 2 ** attempt)
+                except Exception:
+                    retry_after = 2 ** attempt
+
+                print(f"[TELEGRAM RATE-LIMIT] {retry_after}s صبر و تلاش دوباره...")
+                time.sleep(float(retry_after) + 0.5)
+                continue
+
+            if resp.status_code != 200:
+                print(
+                    f"[TELEGRAM ERROR] "
+                    f"{resp.status_code}: {resp.text}"
+                )
+
+            return
+
+        except Exception as e:
+            print(f"[TELEGRAM EXCEPTION] {e}")
+            time.sleep(min(2 ** attempt, 10))
+
+    print("[TELEGRAM ERROR] ارسال پیام بعد از چند تلاش شکست خورد.")
 
 
 def build_symbol_message(symbol, tf_results, source):
@@ -1182,6 +1261,20 @@ def build_symbol_message(symbol, tf_results, source):
     return msg
 
 
+def _evaluate_task(symbol, timeframe, source):
+    """
+    یه تسک مستقل و بی‌طرف (بدون هیچ side effect روی state مشترک) که
+    داخل thread pool اجرا میشه: فقط داده می‌گیره و سیگنال محاسبه
+    می‌کنه، هیچ‌چیزی نمی‌نویسه/تغییر نمی‌ده. هر خطایی رو هم خودش
+    catch می‌کنه تا یه تسک ناموفق بقیه‌ی pool رو خراب نکنه.
+    """
+    try:
+        result = evaluate_symbol(symbol, timeframe, source)
+        return symbol, timeframe, source, result, None
+    except Exception as e:
+        return symbol, timeframe, source, None, e
+
+
 def main():
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -1199,9 +1292,49 @@ def main():
         f"Checking top {len(symbols)} symbols "
         f"(priority: Binance Spot, fallback: MEXC Futures, TOP_N={TOP_N}) "
         f"on timeframes {TIMEFRAMES}... "
-        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'})"
+        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'}, "
+        f"workers: {MAX_WORKERS})"
     )
 
+    # --- فاز ۱: موازی — فقط گرفتن دیتا و محاسبه‌ی سیگنال، بدون هیچ ---
+    # --- side effect ای رو state مشترک (dedup/شمارش/ارسال پیام) ---
+    tasks = [
+        (symbol, timeframe, source_map[symbol])
+        for symbol in symbols
+        for timeframe in TIMEFRAMES
+    ]
+
+    raw_results = {}  # (symbol, timeframe) -> result dict یا None
+    error_count = 0
+
+    scan_started_at = time.monotonic()
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [
+            executor.submit(_evaluate_task, symbol, timeframe, source)
+            for symbol, timeframe, source in tasks
+        ]
+
+        for future in as_completed(futures):
+            symbol, timeframe, source, result, error = future.result()
+
+            if error is not None:
+                error_count += 1
+                print(f"[ERROR] {symbol} ({source}) {timeframe}: {error}")
+                continue
+
+            if result:
+                raw_results[(symbol, timeframe)] = result
+
+    scan_elapsed = time.monotonic() - scan_started_at
+
+    print(
+        f"[INFO] فاز موازی تموم شد: {len(tasks)} ترکیب نماد/تایم‌فریم "
+        f"در {scan_elapsed:.1f} ثانیه ({error_count} خطا، "
+        f"{len(raw_results)} نتیجه‌ی معتبر)."
+    )
+
+    # --- فاز ۲: سریال — دیدوپ/شمارش/ساخت و ارسال پیام (روی state) ---
     bullish_count = 0
     bearish_count = 0
     pass_count = 0
@@ -1213,60 +1346,46 @@ def main():
     for symbol in symbols:
 
         source = source_map[symbol]
-        sleep_time = BINANCE_REQUEST_SLEEP if source == "binance" else MEXC_REQUEST_SLEEP
-
         tf_results = []
 
         for timeframe in TIMEFRAMES:
 
-            try:
-                result = evaluate_symbol(symbol, timeframe, source)
-
-            except Exception as e:
-                print(
-                    f"[ERROR] {symbol} ({source}) {timeframe}: {e}"
-                )
-
-                time.sleep(sleep_time)
+            result = raw_results.get((symbol, timeframe))
+            if not result:
                 continue
 
-            if result:
+            key = f"{symbol}_{timeframe}"
 
-                key = f"{symbol}_{timeframe}"
-
-                if state.get(key) == result["candle_open_ms"]:
-                    duplicate_skipped += 1
-                    print(
-                        f"[SKIP-DUP] {symbol} {timeframe}: "
-                        f"سیگنال تکراریه (قبلاً روی همین کندل فرستاده شده)"
-                    )
-                    time.sleep(sleep_time)
-                    continue
-
-                tf_results.append((timeframe, result))
-
-                if result["signal"] == "bullish":
-                    bullish_count += 1
-                else:
-                    bearish_count += 1
-
-                if (
-                    not result["risky"]
-                    and not result["no_volume"]
-                    and result.get("htf_confirm") is True
-                ):
-                    pass_count += 1
-
-                state[key] = result["candle_open_ms"]
-
+            if state.get(key) == result["candle_open_ms"]:
+                duplicate_skipped += 1
                 print(
-                    f"[SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
-                    f"(risky={result['risky']}, no_volume={result['no_volume']}, "
-                    f"htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
-                    f"RSI={result['rsi_value']}, ADX={result['adx_value']})"
+                    f"[SKIP-DUP] {symbol} {timeframe}: "
+                    f"سیگنال تکراریه (قبلاً روی همین کندل فرستاده شده)"
                 )
+                continue
 
-            time.sleep(sleep_time)
+            tf_results.append((timeframe, result))
+
+            if result["signal"] == "bullish":
+                bullish_count += 1
+            else:
+                bearish_count += 1
+
+            if (
+                not result["risky"]
+                and not result["no_volume"]
+                and result.get("htf_confirm") is True
+            ):
+                pass_count += 1
+
+            state[key] = result["candle_open_ms"]
+
+            print(
+                f"[SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
+                f"(risky={result['risky']}, no_volume={result['no_volume']}, "
+                f"htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
+                f"RSI={result['rsi_value']}, ADX={result['adx_value']})"
+            )
 
         def _is_delayed(res):
             return res["risky"] or res.get("htf_confirm") is False
@@ -1301,6 +1420,7 @@ def main():
     summary_msg = (
         f"<b>✅ پایان اسکن</b>\n"
         f"🕒 {finish_time_str}\n"
+        f"⏱ زمان اسکن: {scan_elapsed:.1f} ثانیه\n"
         f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
         f"مجموع سیگنال‌های جدید: <b>{total_signals}</b> "
         f"(🟢 {bullish_count} #long / 🔴 {bearish_count} #short)\n"
