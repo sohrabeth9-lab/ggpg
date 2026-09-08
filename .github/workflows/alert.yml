@@ -1,7 +1,5 @@
 name: Binance Setup Alert Bot
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 concurrency:
   group: binance-alert-bot
