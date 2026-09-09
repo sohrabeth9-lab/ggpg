@@ -89,7 +89,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "250"))   # ۲۵۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
+TOP_N = int(os.environ.get("TOP_N", "30"))   # ۲۵۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
