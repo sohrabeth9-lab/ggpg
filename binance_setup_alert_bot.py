@@ -94,7 +94,7 @@ TOP_N = int(os.environ.get("TOP_N", "30"))   # ۲۵۰ نماد برتر بر ا�
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
 
-MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.33"))
+MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.5"))
 
 # نسبت سایه به بدنه - جدا برای بولیش (سایه پایین) و بریش (سایه بالا)
 SHADOW_RATIO_BULL = float(os.environ.get("SHADOW_RATIO_BULL", "1.5"))
@@ -112,7 +112,7 @@ SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
 SMA_TREND_LEN = int(os.environ.get("SMA_TREND_LEN", "99"))
 
 # فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای رنج خود همون کندل (نه ATR)
-SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.0"))
+SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "2.0"))
 
 # فیلتر روند/رنج با ADX
 ADX_LEN = int(os.environ.get("ADX_LEN", "14"))
