@@ -3,7 +3,7 @@ Setup Candle + SMA Alert Bot (Binance SPOT + MEXC FUTURES fallback -> Telegram)
 Multi-Timeframe
 ============================================================================
 منطق سیگنال دقیقاً منطبق با آخرین نسخه‌ی اسکریپت Pine v6
-(indicator "Setup Candle + SMA View") هست:
+(indicator "Setup Candle + structure filtered") هست:
   - بدنه کوچک (small_body)
   - سایه غالب (lower/upper dominant) - نسبت سایه به بدنه جدا برای
     بولیش (SHADOW_RATIO_BULL) و بریش (SHADOW_RATIO_BEAR)
@@ -12,14 +12,19 @@ Multi-Timeframe
     برعکسش برای بریش)
   - بدنه‌ی کندل نباید SMA7 رو قطع کرده باشه
   - فاصله‌ی close تا SMA7 نباید بیشتر از SMA7_MAX_DIST_MULT برابر
-    رنج خود همون کندل (high-low) باشه
-  - فیلتر روند با ADX/DMI: اگه ADX >= آستانه -> سیگنال عادی،
-    اگه ADX < آستانه (بازار رنج) -> همون سیگنال ولی "ریسکی" میشه
+    ATR (نه رنج خود کندل) باشه
+  - فیلتر عدم‌برخورد کلوز به SMA25: تو SMA25_TOUCH_LOOKBACK کندل اخیر،
+    close نباید هیچ کراسی با SMA25 داشته باشه
+  - فیلتر ترند/رنج ترکیبی از سه شرط (هر سه باید برقرار باشن):
+      * ADX/DMI: adx >= ADX_THRESHOLD
+      * Spread: |SMA7-SMA99| باید بیشتر از ATR*SPREAD_MULTIPLIER باشه
+      * Cross Count: تعداد کراس‌های SMA7/25/99 تو CROSS_LOOKBACK کندل
+        اخیر نباید از MAX_CROSS_COUNT بیشتر باشه
+    اگه این سه شرط برقرار نباشن -> سیگنال عادی حذف نمیشه، فقط "ریسکی"
+    (بازار رنج) تگ میشه، دقیقاً مثل پاین‌اسکریپت.
   - شرط حجم فیلتر نیست؛ فقط تگ جدا (No-Volume-Condition)
   - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation) - فقط تگ،
     نه فیلتر
-  - تلورانس درصدی روی نسبت‌های سایه (SHADOW_TOLERANCE_PERCENT) و سقف
-    سایه‌ی مقابل نسبی به سایه‌ی غالب (SHADOW_MAX_..._OPPOSITE_PCT)
 
 --- منبع داده (این نسخه) ---
 اولویت اول: بایننس SPOT (نه فیوچرز، چون فیوچرز بایننس رو خیلی از
@@ -43,6 +48,17 @@ Multi-Timeframe
   - بخش دیدوپ/شمارش/ارسال پیام (که به state مشترک نیاز داره) بعد از
     تموم‌شدن فاز موازی و به‌صورت سریال انجام میشه تا هیچ race condition
     ای رو state ایجاد نشه.
+
+--- تغییرات این نسخه (سینک با آخرین اندیکاتور) ---
+  - فیلتر عدم‌برخورد کلوز به SMA25 اضافه شد (SMA25_TOUCH_LOOKBACK).
+  - فیلتر Cross Count سه SMA اضافه شد (CROSS_LOOKBACK, MAX_CROSS_COUNT).
+  - فیلتر Spread ATR-based بین SMA7 و SMA99 اضافه شد (ATR_LEN,
+    SPREAD_MULTIPLIER). حالا trending = adx_trending and spread_trending
+    and cross_trending (دقیقاً مثل پاین‌اسکریپت)، نه فقط ADX تنها.
+  - near_sma7 حالا بر مبنای ATR سنجیده میشه، نه رنج خود کندل.
+  - ADX_THRESHOLD پیش‌فرض از 20 به 10 و SMA7_MAX_DIST_MULT پیش‌فرض از
+    2.0 به 1.0 تغییر کرد تا با مقادیر پیش‌فرض آخرین پاین‌اسکریپت یکی
+    باشه.
 
 نکات فنی:
   - فرمت نماد بایننس همون فرمت داخلی بدون آندرلاینه ("BTCUSDT")،
@@ -111,13 +127,26 @@ SMA_FAST_LEN = int(os.environ.get("SMA_FAST_LEN", "7"))
 SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
 SMA_TREND_LEN = int(os.environ.get("SMA_TREND_LEN", "99"))
 
-# فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای رنج خود همون کندل (نه ATR)
-SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "2.0"))
+# فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای ATR (نه رنج خود کندل)
+SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.0"))
+
+# فیلتر عدم‌برخورد کلوز به SMA25: تو این تعداد کندل اخیر، close نباید
+# هیچ کراسی با SMA25 داشته باشه
+SMA25_TOUCH_LOOKBACK = int(os.environ.get("SMA25_TOUCH_LOOKBACK", "5"))
 
 # فیلتر روند/رنج با ADX
 ADX_LEN = int(os.environ.get("ADX_LEN", "14"))
 ADX_SMOOTHING = int(os.environ.get("ADX_SMOOTHING", "14"))
-ADX_THRESHOLD = float(os.environ.get("ADX_THRESHOLD", "20.0"))
+ADX_THRESHOLD = float(os.environ.get("ADX_THRESHOLD", "10.0"))
+
+# ATR برای فیلتر Spread (SMA7-SMA99) و برای near_sma7
+ATR_LEN = int(os.environ.get("ATR_LEN", "14"))
+SPREAD_MULTIPLIER = float(os.environ.get("SPREAD_MULTIPLIER", "1.0"))
+
+# فیلتر Cross Count: تعداد کراس‌های SMA7/25/99 تو این تعداد کندل اخیر
+# نباید از MAX_CROSS_COUNT بیشتر باشه (بیشتر از این یعنی بازار رنجه)
+CROSS_LOOKBACK = int(os.environ.get("CROSS_LOOKBACK", "25"))
+MAX_CROSS_COUNT = int(os.environ.get("MAX_CROSS_COUNT", "1"))
 
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 
@@ -134,8 +163,17 @@ AUTO_HTF_MAP = {
     "1d": "1w",
 }
 
-# باید به اندازه‌ی کافی کندل داشته باشیم برای SMA99 + وارم‌آپ ADX
-KLINES_LIMIT = max(SMA_TREND_LEN + 5, ADX_LEN + ADX_SMOOTHING + 20, 120)
+# باید به اندازه‌ی کافی کندل داشته باشیم برای:
+#   - SMA99 + وارم‌آپ ADX
+#   - وارم‌آپ ATR
+#   - CROSS_LOOKBACK کندل که همه‌شون SMA99 معتبر داشته باشن (برای
+#     محاسبه‌ی دقیق cross_count روی کل پنجره)
+KLINES_LIMIT = max(
+    SMA_TREND_LEN + CROSS_LOOKBACK + 10,
+    ADX_LEN + ADX_SMOOTHING + 20,
+    ATR_LEN + 20,
+    150,
+)
 
 # کندل کافی برای محاسبه‌ی چیدمان SMA روی تایم فریم بالاتر
 HTF_KLINES_LIMIT = max(SMA_TREND_LEN + 5, 110)
@@ -848,6 +886,51 @@ def adx_series(highs, lows, closes, di_length, adx_smoothing):
     return rma(dx, adx_smoothing)
 
 
+def atr_series(highs, lows, closes, length):
+    """معادل ta.atr(length) در پاین‌اسکریپت: rma رو true range."""
+    tr = true_range_series(highs, lows, closes)
+    return rma(tr, length)
+
+
+def cross_events(series_a, series_b):
+    """
+    معادل ta.cross(a, b) پاین‌اسکریپت روی کل سری: لیست بولین هم‌طول با
+    ورودی‌ها که True هست اگه دو سری بین کندل قبل و کندل جاری از هم رد
+    شده باشن (تغییر علامت اختلافشون).
+    """
+    n = len(series_a)
+    result = [False] * n
+
+    for i in range(1, n):
+        a0, b0 = series_a[i], series_b[i]
+        a1, b1 = series_a[i - 1], series_b[i - 1]
+
+        if a0 is None or b0 is None or a1 is None or b1 is None:
+            continue
+
+        diff0 = a0 - b0
+        diff1 = a1 - b1
+
+        if diff1 * diff0 < 0:
+            result[i] = True
+
+    return result
+
+
+def rolling_bool_sum(bool_series, idx, lookback):
+    """
+    معادل math.sum(series, lookback) پاین‌اسکریپت در اندیس idx: جمع
+    تعداد True تو lookback کندل اخیر (شامل خود idx). اگه به اندازه‌ی
+    کافی کندل قبلش برای پر کردن کل پنجره نباشه، None برمی‌گردونه
+    (یعنی هنوز تو وارم‌آپیم).
+    """
+    if idx - lookback + 1 < 0:
+        return None
+
+    window = bool_series[idx - lookback + 1: idx + 1]
+    return sum(1 for v in window if v)
+
+
 def get_htf_timeframe(base_timeframe: str) -> str:
     if AUTO_HTF and base_timeframe in AUTO_HTF_MAP:
         return AUTO_HTF_MAP[base_timeframe]
@@ -912,8 +995,10 @@ def human_number(n):
 def evaluate_symbol(symbol: str, timeframe: str, source: str):
     """
     منطق سیگنال روی آخرین کندل بسته‌شده — دقیقاً مطابق آخرین نسخه‌ی
-    اسکریپت Pine v6 (شامل تلورانس درصدی و سقف سایه‌ی مقابل).
-    داده‌ها بسته به source از بایننس اسپات یا مکسی فیوچرز گرفته میشن.
+    اسکریپت Pine v6 "Setup Candle + structure filtered" (شامل تلورانس
+    درصدی، سقف سایه‌ی مقابل، فیلتر عدم‌برخورد SMA25، فیلتر Cross Count
+    و فیلتر Spread ATR-based). داده‌ها بسته به source از بایننس اسپات
+    یا مکسی فیوچرز گرفته میشن.
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT, source)
@@ -945,17 +1030,19 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     sma99_series = sma(closes, SMA_TREND_LEN)
     rsi_series = rsi(closes, RSI_LEN)
     adx_values = adx_series(highs, lows, closes, ADX_LEN, ADX_SMOOTHING)
+    atr_values = atr_series(highs, lows, closes, ATR_LEN)
 
     sma7 = sma7_series[idx]
     sma25 = sma25_series[idx]
     sma99 = sma99_series[idx]
     rsi_value = rsi_series[idx]
     adx_val = adx_values[idx]
+    atr_val = atr_values[idx]
 
     if sma7 is None or sma25 is None or sma99 is None:
         return None
 
-    if adx_val is None:
+    if adx_val is None or atr_val is None:
         return None
 
     o = opens[idx]
@@ -1004,8 +1091,38 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
         and sma7 <= body_high
     )
 
+    # --- فاصله از SMA7 بر اساس ATR (نه رنج خود کندل) ---
     dist_to_sma7 = abs(c - sma7)
-    near_sma7 = dist_to_sma7 <= candle_range * SMA7_MAX_DIST_MULT
+    near_sma7 = dist_to_sma7 <= atr_val * SMA7_MAX_DIST_MULT
+
+    # --- فیلتر عدم‌برخورد کلوز به SMA25 در N کندل اخیر ---
+    close_cross_sma25 = cross_events(closes, sma25_series)
+    sma25_touch_count = rolling_bool_sum(close_cross_sma25, idx, SMA25_TOUCH_LOOKBACK)
+    if sma25_touch_count is None:
+        return None
+    sma25_untouched = sma25_touch_count == 0
+
+    # --- فیلتر Cross Count بین هر سه SMA (7, 25, 99) ---
+    cross_7_25 = cross_events(sma7_series, sma25_series)
+    cross_7_99 = cross_events(sma7_series, sma99_series)
+    cross_25_99 = cross_events(sma25_series, sma99_series)
+    crossed_now_series = [
+        cross_7_25[i] or cross_7_99[i] or cross_25_99[i]
+        for i in range(len(closes))
+    ]
+    cross_count = rolling_bool_sum(crossed_now_series, idx, CROSS_LOOKBACK)
+    if cross_count is None:
+        return None
+    cross_trending = cross_count <= MAX_CROSS_COUNT
+
+    # --- فیلتر Spread ATR-based بین SMA7 و SMA99 ---
+    sma_spread = abs(sma7 - sma99)
+    spread_thresh = atr_val * SPREAD_MULTIPLIER
+    spread_trending = sma_spread > spread_thresh
+
+    # --- ترکیب نهایی رنج/ترند: هر سه شرط باید برقرار باشن ---
+    adx_trending = adx_val >= ADX_THRESHOLD
+    trending = adx_trending and spread_trending and cross_trending
 
     # --- تلورانس درصدی (معادل tol_factor_min / tol_factor_max تو Pine) ---
     tol_factor_min = 1 - (SHADOW_TOLERANCE_PERCENT / 100)
@@ -1033,6 +1150,7 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
         and sma_stack_bull
         and not body_crosses_sma7
         and near_sma7
+        and sma25_untouched
     )
 
     bearish_base = (
@@ -1044,9 +1162,8 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
         and sma_stack_bear
         and not body_crosses_sma7
         and near_sma7
+        and sma25_untouched
     )
-
-    trending = adx_val >= ADX_THRESHOLD
 
     if bullish_base:
         signal = "bullish"
