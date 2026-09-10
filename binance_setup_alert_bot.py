@@ -105,7 +105,7 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "30"))   # ۲۵۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
+TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۵۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
@@ -146,7 +146,7 @@ SPREAD_MULTIPLIER = float(os.environ.get("SPREAD_MULTIPLIER", "1.0"))
 # فیلتر Cross Count: تعداد کراس‌های SMA7/25/99 تو این تعداد کندل اخیر
 # نباید از MAX_CROSS_COUNT بیشتر باشه (بیشتر از این یعنی بازار رنجه)
 CROSS_LOOKBACK = int(os.environ.get("CROSS_LOOKBACK", "25"))
-MAX_CROSS_COUNT = int(os.environ.get("MAX_CROSS_COUNT", "1"))
+MAX_CROSS_COUNT = int(os.environ.get("MAX_CROSS_COUNT", "2"))
 
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 
