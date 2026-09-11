@@ -3,25 +3,31 @@ Setup Candle + SMA Alert Bot (Binance SPOT + MEXC FUTURES fallback -> Telegram)
 Multi-Timeframe
 ============================================================================
 منطق سیگنال دقیقاً منطبق با آخرین نسخه‌ی اسکریپت Pine v6
-(indicator "Setup Candle + structure filtered") هست:
-  - بدنه کوچک (small_body)
-  - سایه غالب (lower/upper dominant) - نسبت سایه به بدنه جدا برای
-    بولیش (SHADOW_RATIO_BULL) و بریش (SHADOW_RATIO_BEAR)
-  - close بالای/پایین هر سه SMA (7, 25, 99) به‌طور هم‌زمان
-  - چیدمان صحیح SMA ها نسبت به هم (sma7 > sma25 > sma99 برای بولیش،
-    برعکسش برای بریش)
-  - بدنه‌ی کندل نباید SMA7 رو قطع کرده باشه
-  - فاصله‌ی close تا SMA7 نباید بیشتر از SMA7_MAX_DIST_MULT برابر
-    ATR (نه رنج خود کندل) باشه
-  - فیلتر عدم‌برخورد کلوز به SMA25: تو SMA25_TOUCH_LOOKBACK کندل اخیر،
-    close نباید هیچ کراسی با SMA25 داشته باشه
-  - فیلتر ترند/رنج ترکیبی از سه شرط (هر سه باید برقرار باشن):
-      * ADX/DMI: adx >= ADX_THRESHOLD
-      * Spread: |SMA7-SMA99| باید بیشتر از ATR*SPREAD_MULTIPLIER باشه
-      * Cross Count: تعداد کراس‌های SMA7/25/99 تو CROSS_LOOKBACK کندل
-        اخیر نباید از MAX_CROSS_COUNT بیشتر باشه
-    اگه این سه شرط برقرار نباشن -> سیگنال عادی حذف نمیشه، فقط "ریسکی"
-    (بازار رنج) تگ میشه، دقیقاً مثل پاین‌اسکریپت.
+(indicator "Setup Candle - Step 10 (+ SMA Entanglement)") هست:
+  - بدنه کوچک، بر اساس ATR (نه رنج خود کندل): body <= ATR * MAX_BODY_ATR_MULT
+  - موقعیت بدنه در رنج کندل (Body Position): برای بولیش بدنه باید تو
+    پایین رنج باشه (hammer)، برای بریش تو بالای رنج (shooting star)
+  - سایه‌ی غالب حداقل به اندازه‌ی ATR * MIN_DOMINANT_SHADOW_ATR_MULT
+  - سایه‌ی مقابل (غیرغالب) حداکثر MAX_OPPOSITE_SHADOW_PCT درصد از کل
+    رنج کندل
+  - close بالای/پایین هر سه SMA (7, 25, 99) به‌طور هم‌زمان + چیدمان
+    صحیح SMA ها نسبت به هم
+  - بدنه‌ی کندل نباید SMA7 رو قطع کرده باشه + فاصله‌ی close تا SMA7
+    نباید بیشتر از SMA7_MAX_DIST_MULT برابر ATR باشه
+  - فیلتر Cross Count: فقط تقاطع SMA7×SMA25 (نه هر سه‌تایی) تو
+    CROSS_LOOKBACK کندل اخیر نباید از MAX_CROSS_COUNT بیشتر باشه
+  - فیلتر درگیری/فشردگی SMA (Entanglement): پهنای بین بالاترین و
+    پایین‌ترین SMA باید حداقل SMA_ENTANGLEMENT_ATR_MULT برابر ATR باشه
+  - فیلتر Choppiness Index: باید زیر CHOP_THRESHOLD باشه (یعنی بازار
+    ترنده، نه رنج)
+  - فیلتر ساختار Higher-High/Higher-Low ساده روی SWING_LOOKBACK کندل
+  - فیلتر اختلاف DI+/DI- (نه ADX خام): |DI+ - DI-| باید از
+    DI_DIFF_THRESHOLD بیشتر باشه و در جهت سیگنال
+  - همه‌ی فیلترهای بالا (Chop + Structure + DI-Diff + Cross + عدم‌درگیری)
+    الان بخشی جدایی‌ناپذیر از خود شرط سیگنال هستن، نه یه تگ "ریسکی"
+    جدا؛ یعنی اگه بازار رنج/درگیر باشه، اصلاً سیگنالی تولید نمیشه.
+    به همین خاطر مفهوم "ریسکی" و پیام جدا برای سیگنال‌های ریسکی از این
+    نسخه کاملاً حذف شده.
   - شرط حجم فیلتر نیست؛ فقط تگ جدا (No-Volume-Condition)
   - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation) - فقط تگ،
     نه فیلتر
@@ -30,35 +36,32 @@ Multi-Timeframe
 اولویت اول: بایننس SPOT (نه فیوچرز، چون فیوچرز بایننس رو خیلی از
 سرورها با خطای 451 بلاک می‌کنه).
 اولویت دوم: MEXC فیوچرز (USDT-M Perpetual) - فقط برای نمادهایی که
-اصلاً تو بایننس اسپات موجود نیستن. یعنی لیست نهایی نمادها اول از
-بایننس (بر اساس حجم ۲۴ساعته) پر میشه و بقیه (اگه نماد فقط تو مکسی
-باشه) از مکسی فیوچرز اضافه میشه. هر نماد با منبعش (source: "binance"
-یا "mexc") تگ میشه و کندل/اردربوک/حجمش هم از همون صرافی گرفته میشه.
+اصلاً تو بایننس اسپات موجود نیستن.
 
---- تغییرات این نسخه (سرعت و پایداری) ---
-  - بررسی نمادها/تایم‌فریم‌ها حالا موازی انجام میشه (ThreadPoolExecutor
-    با MAX_WORKERS کارگر هم‌زمان)، به‌جای یکی‌یکی و پشت سر هم. این
-    زمان کل اسکن رو به‌شدت کم می‌کنه تا از پنجره‌ی ۱۵ دقیقه‌ای cron
-    عقب نیفته.
-  - همه‌ی درخواست‌های HTTP از یه هلسپر مشترک (http_get_with_retry) رد
-    میشن که در برابر ریت‌لیمیت (429) و بن موقت آی‌پی (418) محافظت
-    می‌کنه: با بک‌آف نمایی (یا هدر Retry-After اگه صرافی بفرسته) صبر
-    می‌کنه و خودکار دوباره تلاش می‌کنه، به‌جای اینکه کل اسکن با خطا
-    متوقف بشه.
-  - بخش دیدوپ/شمارش/ارسال پیام (که به state مشترک نیاز داره) بعد از
-    تموم‌شدن فاز موازی و به‌صورت سریال انجام میشه تا هیچ race condition
-    ای رو state ایجاد نشه.
-
---- تغییرات این نسخه (سینک با آخرین اندیکاتور) ---
-  - فیلتر عدم‌برخورد کلوز به SMA25 اضافه شد (SMA25_TOUCH_LOOKBACK).
-  - فیلتر Cross Count سه SMA اضافه شد (CROSS_LOOKBACK, MAX_CROSS_COUNT).
-  - فیلتر Spread ATR-based بین SMA7 و SMA99 اضافه شد (ATR_LEN,
-    SPREAD_MULTIPLIER). حالا trending = adx_trending and spread_trending
-    and cross_trending (دقیقاً مثل پاین‌اسکریپت)، نه فقط ADX تنها.
-  - near_sma7 حالا بر مبنای ATR سنجیده میشه، نه رنج خود کندل.
-  - ADX_THRESHOLD پیش‌فرض از 20 به 10 و SMA7_MAX_DIST_MULT پیش‌فرض از
-    2.0 به 1.0 تغییر کرد تا با مقادیر پیش‌فرض آخرین پاین‌اسکریپت یکی
-    باشه.
+--- تغییرات این نسخه (سینک کامل با آخرین اندیکاتور Pine) ---
+  - همه‌ی محاسبات بدنه/سایه از رنج کندل به ATR تغییر کردن
+    (MAX_BODY_ATR_MULT, MIN_DOMINANT_SHADOW_ATR_MULT,
+    MAX_OPPOSITE_SHADOW_PCT).
+  - فیلتر موقعیت بدنه (Body Position Threshold - hammer/shooting star)
+    اضافه شد که قبلاً اصلاً وجود نداشت.
+  - نسبت‌های تلورانسی سایه (SHADOW_RATIO_*, SHADOW_TOLERANCE_PERCENT)
+    که مال نسخه‌ی قدیمی اندیکاتور بودن کاملاً حذف شدن.
+  - فیلتر عدم‌برخورد کلوز به SMA25 (SMA25_TOUCH_LOOKBACK) که تو
+    اندیکاتور جدید وجود نداره، حذف شد.
+  - Cross Count حالا فقط SMA7×SMA25 رو می‌سنجه (نه هر سه‌تایی SMA).
+    CROSS_LOOKBACK پیش‌فرض از 25 به 20 و MAX_CROSS_COUNT از 2 به 1
+    تغییر کرد (پیش‌فرض‌های خود اندیکاتور).
+  - فیلتر Spread ATR-based (SPREAD_MULTIPLIER) با فیلتر Entanglement
+    واقعی اندیکاتور (SMA_ENTANGLEMENT_ATR_MULT روی پهنای هر سه SMA)
+    جایگزین شد.
+  - فیلتر ADX خام (ADX_THRESHOLD) حذف شد و به‌جاش فیلتر اختلاف
+    DI+/DI- اضافه شد (DMI_LEN, DMI_SMOOTHING, DI_DIFF_THRESHOLD) -
+    دقیقاً مثل اندیکاتور.
+  - فیلتر Choppiness Index اضافه شد (CHOP_LEN, CHOP_THRESHOLD).
+  - فیلتر ساختار Higher-High/Higher-Low اضافه شد (SWING_LOOKBACK).
+  - مفهوم "ریسکی" (risky) و پیام جداگانه‌ی "سیگنال‌های ریسکی" برای
+    تلگرام کاملاً حذف شد، چون تو اندیکاتور جدید فیلتر ترند/رنج جزو
+    خود شرط سیگناله، نه یه تگ هشدار جدا.
 
 نکات فنی:
   - فرمت نماد بایننس همون فرمت داخلی بدون آندرلاینه ("BTCUSDT")،
@@ -85,6 +88,7 @@ Multi-Timeframe
 """
 
 import json
+import math
 import os
 import random
 import time
@@ -105,48 +109,48 @@ TIMEFRAMES = (
 )
 
 QUOTE_ASSET = os.environ.get("QUOTE_ASSET", "USDT")
-TOP_N = int(os.environ.get("TOP_N", "200"))   # ۲۵۰ نماد برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
+TOP_N = int(os.environ.get("TOP_N", "200"))   # نمادهای برتر بر اساس حجم معاملات (ترکیبی بایننس+مکسی)
 
 # فقط قراردادهای Perpetual مکسی (نه Delivery) در نظر گرفته میشن
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
 
-MAX_BODY_RATIO = float(os.environ.get("MAX_BODY_RATIO", "0.5"))
-
-# نسبت سایه به بدنه - جدا برای بولیش (سایه پایین) و بریش (سایه بالا)
-SHADOW_RATIO_BULL = float(os.environ.get("SHADOW_RATIO_BULL", "1.5"))
-SHADOW_RATIO_BEAR = float(os.environ.get("SHADOW_RATIO_BEAR", "1.5"))
-
-# حداکثر سایه‌ی مقابل (غیرغالب) به صورت درصدی از سایه‌ی غالب همون کندل
-SHADOW_MAX_BULL_OPPOSITE_PCT = float(os.environ.get("SHADOW_MAX_BULL_OPPOSITE_PCT", "50.0"))
-SHADOW_MAX_BEAR_OPPOSITE_PCT = float(os.environ.get("SHADOW_MAX_BEAR_OPPOSITE_PCT", "50.0"))
-
-# درصد تلورانس (انعطاف) برای همه‌ی نسبت‌های سایه بالا
-SHADOW_TOLERANCE_PERCENT = float(os.environ.get("SHADOW_TOLERANCE_PERCENT", "20.0"))
+# --- بدنه و سایه (بر مبنای ATR - دقیقاً مطابق اندیکاتور جدید) ---
+MAX_BODY_ATR_MULT = float(os.environ.get("MAX_BODY_ATR_MULT", "0.4"))
+MIN_DOMINANT_SHADOW_ATR_MULT = float(os.environ.get("MIN_DOMINANT_SHADOW_ATR_MULT", "0.2"))
+MAX_OPPOSITE_SHADOW_PCT = float(os.environ.get("MAX_OPPOSITE_SHADOW_PCT", "25.0"))
+BODY_POSITION_THRESHOLD = float(os.environ.get("BODY_POSITION_THRESHOLD", "0.5"))
 
 SMA_FAST_LEN = int(os.environ.get("SMA_FAST_LEN", "7"))
 SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
 SMA_TREND_LEN = int(os.environ.get("SMA_TREND_LEN", "99"))
 
-# فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای ATR (نه رنج خود کندل)
+# فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای ATR
 SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.0"))
 
-# فیلتر عدم‌برخورد کلوز به SMA25: تو این تعداد کندل اخیر، close نباید
-# هیچ کراسی با SMA25 داشته باشه
-SMA25_TOUCH_LOOKBACK = int(os.environ.get("SMA25_TOUCH_LOOKBACK", "5"))
-
-# فیلتر روند/رنج با ADX
-ADX_LEN = int(os.environ.get("ADX_LEN", "14"))
-ADX_SMOOTHING = int(os.environ.get("ADX_SMOOTHING", "14"))
-ADX_THRESHOLD = float(os.environ.get("ADX_THRESHOLD", "10.0"))
-
-# ATR برای فیلتر Spread (SMA7-SMA99) و برای near_sma7
-ATR_LEN = int(os.environ.get("ATR_LEN", "14"))
-SPREAD_MULTIPLIER = float(os.environ.get("SPREAD_MULTIPLIER", "1.0"))
-
-# فیلتر Cross Count: تعداد کراس‌های SMA7/25/99 تو این تعداد کندل اخیر
+# فیلتر Cross Count: فقط تقاطع SMA7×SMA25 تو این تعداد کندل اخیر
 # نباید از MAX_CROSS_COUNT بیشتر باشه (بیشتر از این یعنی بازار رنجه)
-CROSS_LOOKBACK = int(os.environ.get("CROSS_LOOKBACK", "25"))
-MAX_CROSS_COUNT = int(os.environ.get("MAX_CROSS_COUNT", "2"))
+CROSS_LOOKBACK = int(os.environ.get("CROSS_LOOKBACK", "20"))
+MAX_CROSS_COUNT = int(os.environ.get("MAX_CROSS_COUNT", "1"))
+
+# فیلتر درگیری/فشردگی هر سه SMA با هم: پهنای بین بالاترین و
+# پایین‌ترین SMA باید حداقل این‌قدر برابر ATR باشه، وگرنه "درگیر"
+# (entangled) حساب میشه و سیگنال حذف میشه
+SMA_ENTANGLEMENT_ATR_MULT = float(os.environ.get("SMA_ENTANGLEMENT_ATR_MULT", "2.0"))
+
+# --- Choppiness Index (رنج/ترند) ---
+CHOP_LEN = int(os.environ.get("CHOP_LEN", "14"))
+CHOP_THRESHOLD = float(os.environ.get("CHOP_THRESHOLD", "61.8"))
+
+# --- ساختار Higher-High/Higher-Low ---
+SWING_LOOKBACK = int(os.environ.get("SWING_LOOKBACK", "10"))
+
+# --- اختلاف DI+/DI- (نه ADX خام) ---
+DMI_LEN = int(os.environ.get("DMI_LEN", "14"))
+DMI_SMOOTHING = int(os.environ.get("DMI_SMOOTHING", "14"))
+DI_DIFF_THRESHOLD = float(os.environ.get("DI_DIFF_THRESHOLD", "5.0"))
+
+# ATR مشترک برای بدنه/سایه، near_sma7 و فیلتر entanglement
+ATR_LEN = int(os.environ.get("ATR_LEN", "14"))
 
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 
@@ -164,14 +168,17 @@ AUTO_HTF_MAP = {
 }
 
 # باید به اندازه‌ی کافی کندل داشته باشیم برای:
-#   - SMA99 + وارم‌آپ ADX
+#   - SMA99 + وارم‌آپ Cross Count
+#   - وارم‌آپ DMI/ADX
 #   - وارم‌آپ ATR
-#   - CROSS_LOOKBACK کندل که همه‌شون SMA99 معتبر داشته باشن (برای
-#     محاسبه‌ی دقیق cross_count روی کل پنجره)
+#   - وارم‌آپ Choppiness (highest/lowest/sum روی CHOP_LEN)
+#   - وارم‌آپ ساختار HH/HL روی SWING_LOOKBACK
 KLINES_LIMIT = max(
     SMA_TREND_LEN + CROSS_LOOKBACK + 10,
-    ADX_LEN + ADX_SMOOTHING + 20,
+    DMI_LEN + DMI_SMOOTHING + 20,
     ATR_LEN + 20,
+    CHOP_LEN + 20,
+    SWING_LOOKBACK + 20,
     150,
 )
 
@@ -852,7 +859,18 @@ def true_range_series(highs, lows, closes):
     return tr
 
 
-def adx_series(highs, lows, closes, di_length, adx_smoothing):
+def atr_series(highs, lows, closes, length):
+    """معادل ta.atr(length) در پاین‌اسکریپت: rma رو true range."""
+    tr = true_range_series(highs, lows, closes)
+    return rma(tr, length)
+
+
+def dmi_series(highs, lows, closes, di_length, adx_smoothing):
+    """
+    معادل ta.dmi(di_length, adx_smoothing) در پاین‌اسکریپت. سه لیست
+    هم‌طول برمی‌گردونه: (plus_di, minus_di, adx). خود اندیکاتور فقط
+    از اختلاف plus_di - minus_di استفاده می‌کنه (نه adx خام).
+    """
     n = len(highs)
     plus_dm = [0.0] * n
     minus_dm = [0.0] * n
@@ -870,7 +888,10 @@ def adx_series(highs, lows, closes, di_length, adx_smoothing):
     plus_dm_rma = rma(plus_dm, di_length)
     minus_dm_rma = rma(minus_dm, di_length)
 
+    plus_di = [None] * n
+    minus_di = [None] * n
     dx = [None] * n
+
     for i in range(n):
         if (
             tr_rma[i] is not None
@@ -878,18 +899,17 @@ def adx_series(highs, lows, closes, di_length, adx_smoothing):
             and plus_dm_rma[i] is not None
             and minus_dm_rma[i] is not None
         ):
-            plus_di = 100 * plus_dm_rma[i] / tr_rma[i]
-            minus_di = 100 * minus_dm_rma[i] / tr_rma[i]
-            denom = plus_di + minus_di
-            dx[i] = 100 * abs(plus_di - minus_di) / denom if denom != 0 else 0.0
+            pdi = 100 * plus_dm_rma[i] / tr_rma[i]
+            mdi = 100 * minus_dm_rma[i] / tr_rma[i]
+            plus_di[i] = pdi
+            minus_di[i] = mdi
 
-    return rma(dx, adx_smoothing)
+            denom = pdi + mdi
+            dx[i] = 100 * abs(pdi - mdi) / denom if denom != 0 else 0.0
 
+    adx = rma(dx, adx_smoothing)
 
-def atr_series(highs, lows, closes, length):
-    """معادل ta.atr(length) در پاین‌اسکریپت: rma رو true range."""
-    tr = true_range_series(highs, lows, closes)
-    return rma(tr, length)
+    return plus_di, minus_di, adx
 
 
 def cross_events(series_a, series_b):
@@ -929,6 +949,52 @@ def rolling_bool_sum(bool_series, idx, lookback):
 
     window = bool_series[idx - lookback + 1: idx + 1]
     return sum(1 for v in window if v)
+
+
+def choppiness_index_at(highs, lows, tr_series, idx, length):
+    """
+    معادل محاسبه‌ی choppiness تو پاین‌اسکریپت در اندیس idx:
+    100 * log10( sum(tr, length) / (highest(high,length)-lowest(low,length)) ) / log10(length)
+    اگه پنجره‌ی کامل هنوز موجود نباشه، None برمی‌گردونه.
+    """
+    if idx - length + 1 < 0:
+        return None
+
+    tr_window = tr_series[idx - length + 1: idx + 1]
+    if any(v is None for v in tr_window):
+        return None
+
+    chop_sum_tr = sum(tr_window)
+
+    high_window = highs[idx - length + 1: idx + 1]
+    low_window = lows[idx - length + 1: idx + 1]
+    chop_range = max(high_window) - min(low_window)
+
+    if chop_range <= 0:
+        return 0.0
+
+    return 100 * math.log10(chop_sum_tr / chop_range) / math.log10(length)
+
+
+def structure_flags_at(highs, lows, idx, swing_lookback):
+    """
+    معادل:
+      structure_uptrend   = low  > ta.lowest(low[1],  swing_lookback)
+      structure_downtrend = high < ta.highest(high[1], swing_lookback)
+    یعنی کف/سقف کندل جاری نسبت به پایین‌ترین/بالاترین swing_lookback
+    کندل *قبل* از کندل جاری (بدون خود کندل جاری) سنجیده میشه.
+    اگه به اندازه‌ی کافی تاریخچه نباشه، (None, None) برمی‌گردونه.
+    """
+    if idx - swing_lookback < 0:
+        return None, None
+
+    prev_lows = lows[idx - swing_lookback: idx]
+    prev_highs = highs[idx - swing_lookback: idx]
+
+    structure_uptrend = lows[idx] > min(prev_lows)
+    structure_downtrend = highs[idx] < max(prev_highs)
+
+    return structure_uptrend, structure_downtrend
 
 
 def get_htf_timeframe(base_timeframe: str) -> str:
@@ -995,10 +1061,13 @@ def human_number(n):
 def evaluate_symbol(symbol: str, timeframe: str, source: str):
     """
     منطق سیگنال روی آخرین کندل بسته‌شده — دقیقاً مطابق آخرین نسخه‌ی
-    اسکریپت Pine v6 "Setup Candle + structure filtered" (شامل تلورانس
-    درصدی، سقف سایه‌ی مقابل، فیلتر عدم‌برخورد SMA25، فیلتر Cross Count
-    و فیلتر Spread ATR-based). داده‌ها بسته به source از بایننس اسپات
-    یا مکسی فیوچرز گرفته میشن.
+    اسکریپت Pine v6 "Setup Candle - Step 10 (+ SMA Entanglement)".
+    داده‌ها بسته به source از بایننس اسپات یا مکسی فیوچرز گرفته میشن.
+
+    توجه: فیلتر ترند/رنج (Choppiness + Structure + DI-Diff + Cross +
+    Entanglement) بخشی اجباری از خود شرط سیگناله، نه یه تگ جدا. یعنی
+    اگه این تابع دیکشنری برگردونه، سیگنال از قبل "تمیز" و تأییدشده‌ست
+    و هیچ مفهوم "ریسکی" جداگانه‌ای وجود نداره.
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT, source)
@@ -1029,20 +1098,28 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     sma25_series = sma(closes, SMA_MID_LEN)
     sma99_series = sma(closes, SMA_TREND_LEN)
     rsi_series = rsi(closes, RSI_LEN)
-    adx_values = adx_series(highs, lows, closes, ADX_LEN, ADX_SMOOTHING)
     atr_values = atr_series(highs, lows, closes, ATR_LEN)
+    tr_series = true_range_series(highs, lows, closes)
+    plus_di_series, minus_di_series, adx_series_vals = dmi_series(
+        highs, lows, closes, DMI_LEN, DMI_SMOOTHING
+    )
 
     sma7 = sma7_series[idx]
     sma25 = sma25_series[idx]
     sma99 = sma99_series[idx]
     rsi_value = rsi_series[idx]
-    adx_val = adx_values[idx]
     atr_val = atr_values[idx]
+    plus_di = plus_di_series[idx]
+    minus_di = minus_di_series[idx]
+    adx_val = adx_series_vals[idx]
 
     if sma7 is None or sma25 is None or sma99 is None:
         return None
 
-    if adx_val is None or atr_val is None:
+    if atr_val is None or atr_val == 0:
+        return None
+
+    if plus_di is None or minus_di is None:
         return None
 
     o = opens[idx]
@@ -1051,126 +1128,106 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     c = closes[idx]
 
     body = abs(c - o)
-
     upper_shadow = h - max(c, o)
     lower_shadow = min(c, o) - l
-
     candle_range = h - l
 
-    if candle_range == 0:
+    if candle_range <= 0:
         return None
 
-    small_body = (
-        body > 0
-        and body <= candle_range * MAX_BODY_RATIO
+    # --- بدنه و سایه (بر مبنای ATR) ---
+    small_body = body <= atr_val * MAX_BODY_ATR_MULT
+
+    body_low_position = (min(o, c) - l) / candle_range
+    body_high_position = (max(o, c) - l) / candle_range
+
+    is_hammer_position = body_low_position >= BODY_POSITION_THRESHOLD
+    is_shooting_star_position = body_high_position <= (1 - BODY_POSITION_THRESHOLD)
+
+    lower_shadow_big_enough = lower_shadow >= atr_val * MIN_DOMINANT_SHADOW_ATR_MULT
+    upper_shadow_big_enough = upper_shadow >= atr_val * MIN_DOMINANT_SHADOW_ATR_MULT
+
+    upper_shadow_tiny = upper_shadow <= candle_range * (MAX_OPPOSITE_SHADOW_PCT / 100)
+    lower_shadow_tiny = lower_shadow <= candle_range * (MAX_OPPOSITE_SHADOW_PCT / 100)
+
+    bullish_shape = (
+        small_body and is_hammer_position
+        and lower_shadow_big_enough and upper_shadow_tiny
+    )
+    bearish_shape = (
+        small_body and is_shooting_star_position
+        and upper_shadow_big_enough and lower_shadow_tiny
     )
 
-    upper_dominant = upper_shadow > lower_shadow
-    lower_dominant = lower_shadow > upper_shadow
+    if not bullish_shape and not bearish_shape:
+        return None
 
-    above_all_sma = (
-        c > sma7
-        and c > sma25
-        and c > sma99
-    )
-
-    below_all_sma = (
-        c < sma7
-        and c < sma25
-        and c < sma99
-    )
-
+    # --- SMA: چیدمان، موقعیت close، فاصله تا SMA7 ---
     sma_stack_bull = sma7 > sma25 and sma25 > sma99
     sma_stack_bear = sma7 < sma25 and sma25 < sma99
 
-    body_high = max(o, c)
-    body_low = min(o, c)
+    above_all_sma = c > sma7 and c > sma25 and c > sma99
+    below_all_sma = c < sma7 and c < sma25 and c < sma99
 
-    body_crosses_sma7 = (
-        sma7 >= body_low
-        and sma7 <= body_high
-    )
-
-    # --- فاصله از SMA7 بر اساس ATR (نه رنج خود کندل) ---
     dist_to_sma7 = abs(c - sma7)
     near_sma7 = dist_to_sma7 <= atr_val * SMA7_MAX_DIST_MULT
 
-    # --- فیلتر عدم‌برخورد کلوز به SMA25 در N کندل اخیر ---
-    close_cross_sma25 = cross_events(closes, sma25_series)
-    sma25_touch_count = rolling_bool_sum(close_cross_sma25, idx, SMA25_TOUCH_LOOKBACK)
-    if sma25_touch_count is None:
-        return None
-    sma25_untouched = sma25_touch_count == 0
+    body_high = max(o, c)
+    body_low = min(o, c)
+    body_crosses_sma7 = sma7 >= body_low and sma7 <= body_high
 
-    # --- فیلتر Cross Count بین هر سه SMA (7, 25, 99) ---
+    # --- Cross Count: فقط SMA7×SMA25 ---
     cross_7_25 = cross_events(sma7_series, sma25_series)
-    cross_7_99 = cross_events(sma7_series, sma99_series)
-    cross_25_99 = cross_events(sma25_series, sma99_series)
-    crossed_now_series = [
-        cross_7_25[i] or cross_7_99[i] or cross_25_99[i]
-        for i in range(len(closes))
-    ]
-    cross_count = rolling_bool_sum(crossed_now_series, idx, CROSS_LOOKBACK)
+    cross_count = rolling_bool_sum(cross_7_25, idx, CROSS_LOOKBACK)
     if cross_count is None:
         return None
     cross_trending = cross_count <= MAX_CROSS_COUNT
 
-    # --- فیلتر Spread ATR-based بین SMA7 و SMA99 ---
-    sma_spread = abs(sma7 - sma99)
-    spread_thresh = atr_val * SPREAD_MULTIPLIER
-    spread_trending = sma_spread > spread_thresh
+    # --- درگیری/فشردگی هر سه SMA ---
+    sma_max = max(sma7, sma25, sma99)
+    sma_min = min(sma7, sma25, sma99)
+    sma_entanglement_range = sma_max - sma_min
+    not_entangled = sma_entanglement_range >= atr_val * SMA_ENTANGLEMENT_ATR_MULT
 
-    # --- ترکیب نهایی رنج/ترند: هر سه شرط باید برقرار باشن ---
-    adx_trending = adx_val >= ADX_THRESHOLD
-    trending = adx_trending and spread_trending and cross_trending
+    # --- Choppiness Index ---
+    choppiness = choppiness_index_at(highs, lows, tr_series, idx, CHOP_LEN)
+    if choppiness is None:
+        return None
+    is_trending_chop = choppiness < CHOP_THRESHOLD
 
-    # --- تلورانس درصدی (معادل tol_factor_min / tol_factor_max تو Pine) ---
-    tol_factor_min = 1 - (SHADOW_TOLERANCE_PERCENT / 100)
-    tol_factor_max = 1 + (SHADOW_TOLERANCE_PERCENT / 100)
+    # --- ساختار Higher-High/Higher-Low ---
+    structure_uptrend, structure_downtrend = structure_flags_at(highs, lows, idx, SWING_LOOKBACK)
+    if structure_uptrend is None:
+        return None
 
-    shadow_ratio_bull_eff = SHADOW_RATIO_BULL * tol_factor_min
-    shadow_ratio_bear_eff = SHADOW_RATIO_BEAR * tol_factor_min
+    # --- اختلاف DI+/DI- ---
+    di_diff = plus_di - minus_di
+    direction_bull_clear = di_diff > DI_DIFF_THRESHOLD
+    direction_bear_clear = (-di_diff) > DI_DIFF_THRESHOLD
 
-    # سقف سایه‌ی مقابل: نسبی به سایه‌ی غالب همون کندل + تلورانس
-    shadow_max_bull_opposite_eff = lower_shadow * (SHADOW_MAX_BULL_OPPOSITE_PCT / 100) * tol_factor_max
-    shadow_max_bear_opposite_eff = upper_shadow * (SHADOW_MAX_BEAR_OPPOSITE_PCT / 100) * tol_factor_max
-
-    cond_lower_ratio_ok = lower_shadow >= body * shadow_ratio_bull_eff
-    cond_upper_opposite_ok = upper_shadow <= shadow_max_bull_opposite_eff
-
-    cond_upper_ratio_ok = upper_shadow >= body * shadow_ratio_bear_eff
-    cond_lower_opposite_ok = lower_shadow <= shadow_max_bear_opposite_eff
-
-    bullish_base = (
-        small_body
-        and lower_dominant
-        and cond_lower_ratio_ok
-        and cond_upper_opposite_ok
-        and above_all_sma
-        and sma_stack_bull
-        and not body_crosses_sma7
-        and near_sma7
-        and sma25_untouched
+    # --- ترکیب نهایی فیلتر رنج/ترند (بخشی اجباری از خود سیگنال) ---
+    is_trending_bull = (
+        is_trending_chop and structure_uptrend
+        and direction_bull_clear and cross_trending and not_entangled
+    )
+    is_trending_bear = (
+        is_trending_chop and structure_downtrend
+        and direction_bear_clear and cross_trending and not_entangled
     )
 
-    bearish_base = (
-        small_body
-        and upper_dominant
-        and cond_upper_ratio_ok
-        and cond_lower_opposite_ok
-        and below_all_sma
-        and sma_stack_bear
-        and not body_crosses_sma7
-        and near_sma7
-        and sma25_untouched
+    bullish_condition = (
+        bullish_shape and sma_stack_bull and above_all_sma
+        and near_sma7 and not body_crosses_sma7 and is_trending_bull
+    )
+    bearish_condition = (
+        bearish_shape and sma_stack_bear and below_all_sma
+        and near_sma7 and not body_crosses_sma7 and is_trending_bear
     )
 
-    if bullish_base:
+    if bullish_condition:
         signal = "bullish"
-        risky = not trending
-    elif bearish_base:
+    elif bearish_condition:
         signal = "bearish"
-        risky = not trending
     else:
         return None
 
@@ -1194,7 +1251,6 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
 
     return {
         "signal": signal,
-        "risky": risky,
         "no_volume": no_volume,
         "htf_confirm": htf_confirm,
         "htf_timeframe": htf_timeframe_used,
@@ -1203,6 +1259,8 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
         "close_price": c,
         "rsi_value": rsi_value,
         "adx_value": adx_val,
+        "di_diff": di_diff,
+        "choppiness": choppiness,
         "candles_ago": candles_ago,
         "source": source,
     }
@@ -1280,11 +1338,13 @@ def send_telegram(text: str):
 def build_symbol_message(symbol, tf_results, source):
     """
     پیام واحد برای یک نماد که ممکنه شامل سیگنال چند تایم‌فریم باشه.
+    چون فیلتر ترند/رنج الان جزو خود شرط سیگناله، همه‌ی سیگنال‌های این
+    پیام از قبل "تمیز" هستن؛ دیگه هیچ تگ ⚠️ ریسکی وجود نداره.
 
     فرمت:
       🟢 #LONG #SYMBOL   (یا 🔴 #SHORT #SYMBOL)
 
-      ⏱️ 15m ✅> 1h | RSI 40.4 | ADX 27.3 ⚠️ | 💰 42.11 | 🟡NoVol
+      ⏱️ 15m ✅> 1h | RSI 40.4 | ADX 27.3 | 💰 42.11 | 🟡NoVol
       ⏱️ 1h ❌> 4h | RSI ...
 
       📊 Vol: 1h 163K | 24h 13.3M | 7d 81M
@@ -1317,12 +1377,11 @@ def build_symbol_message(symbol, tf_results, source):
         rsi_str = "?" if rsi_value is None else f"{rsi_value:.1f}"
 
         adx_str = "?" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
-        risky_suffix = " ⚠️" if res["risky"] else ""
 
         no_volume_suffix = " | 🟡NoVol" if res["no_volume"] else ""
 
         lines_per_tf.append(
-            f"⏱️ {tf}{htf_arrow} | RSI {rsi_str} | ADX {adx_str}{risky_suffix} | "
+            f"⏱️ {tf}{htf_arrow} | RSI {rsi_str} | ADX {adx_str} | "
             f"💰 {res['close_price']}{no_volume_suffix}"
         )
 
@@ -1453,13 +1512,14 @@ def main():
     )
 
     # --- فاز ۲: سریال — دیدوپ/شمارش/ساخت و ارسال پیام (روی state) ---
+    # چون فیلتر ترند/رنج الان جزو خود شرط سیگناله، دیگه چیزی به اسم
+    # "سیگنال ریسکی" وجود نداره که جدا تگ یا جدا ارسال بشه؛ هر سیگنالی
+    # که از evaluate_symbol برگرده از قبل تأییدشده‌ست.
     bullish_count = 0
     bearish_count = 0
     pass_count = 0
     duplicate_skipped = 0
     messages_sent = 0
-
-    delayed_signals = []
 
     for symbol in symbols:
 
@@ -1489,48 +1549,25 @@ def main():
             else:
                 bearish_count += 1
 
-            if (
-                not result["risky"]
-                and not result["no_volume"]
-                and result.get("htf_confirm") is True
-            ):
+            if not result["no_volume"] and result.get("htf_confirm") is True:
                 pass_count += 1
 
             state[key] = result["candle_open_ms"]
 
             print(
                 f"[SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
-                f"(risky={result['risky']}, no_volume={result['no_volume']}, "
+                f"(no_volume={result['no_volume']}, "
                 f"htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
-                f"RSI={result['rsi_value']}, ADX={result['adx_value']})"
+                f"RSI={result['rsi_value']}, ADX={result['adx_value']}, "
+                f"DI-diff={result['di_diff']:.2f}, Chop={result['choppiness']:.1f})"
             )
 
-        def _is_delayed(res):
-            return res["risky"] or res.get("htf_confirm") is False
-
-        normal_tf_results = [(tf, res) for tf, res in tf_results if not _is_delayed(res)]
-        delayed_tf_results = [(tf, res) for tf, res in tf_results if _is_delayed(res)]
-
-        if normal_tf_results:
-            msg = build_symbol_message(symbol, normal_tf_results, source)
+        if tf_results:
+            msg = build_symbol_message(symbol, tf_results, source)
             send_telegram(msg)
             messages_sent += 1
-
-        if delayed_tf_results:
-            delayed_signals.append((symbol, delayed_tf_results, source))
 
     save_state(state)
-
-    if delayed_signals:
-        send_telegram(
-            f"<b>⚠️ سیگنال‌های ریسکی / ناهم‌جهت با HTF این اسکن</b>\n"
-            f"تعداد: {len(delayed_signals)} نماد"
-        )
-
-        for symbol, delayed_tf_results, source in delayed_signals:
-            msg = build_symbol_message(symbol, delayed_tf_results, source)
-            send_telegram(msg)
-            messages_sent += 1
 
     total_signals = bullish_count + bearish_count
     finish_time_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -1542,7 +1579,7 @@ def main():
         f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
         f"مجموع سیگنال‌های جدید: <b>{total_signals}</b> "
         f"(🟢 {bullish_count} #long / 🔴 {bearish_count} #short)\n"
-        f"✅ #pass (همه‌ی شرایط کامل): <b>{pass_count}</b>\n"
+        f"✅ #pass (حجم + HTF کامل): <b>{pass_count}</b>\n"
         f"تکراری نادیده‌گرفته‌شده: {duplicate_skipped}"
     )
 
