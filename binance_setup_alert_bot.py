@@ -970,7 +970,6 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     highs = [float(k[2]) for k in raw]
     lows = [float(k[3]) for k in raw]
     closes = [float(k[4]) for k in raw]
-    volumes = [float(k[5]) for k in raw]
 
     open_times = [int(k[0]) for k in raw]
     close_times = [int(k[6]) for k in raw]
@@ -1122,10 +1121,6 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     else:
         return None
 
-    vol_now = volumes[idx]
-    vol_prev = volumes[idx - 1]
-    no_volume = not (vol_now < vol_prev)
-
     htf_confirm = None
     htf_timeframe_used = None
 
@@ -1148,7 +1143,6 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
 
     return {
         "signal": signal,
-        "no_volume": no_volume,
         "htf_confirm": htf_confirm,
         "htf_timeframe": htf_timeframe_used,
         "candle_open_ms": open_times[idx],
@@ -1260,11 +1254,9 @@ def build_symbol_message(symbol, tf_results, source):
 
         adx_str = "?" if res["adx_value"] is None else f"{res['adx_value']:.1f}"
 
-        no_volume_suffix = " | 🟡NoVol" if res["no_volume"] else ""
-
         lines_per_tf.append(
             f"⏱️ {tf}{htf_arrow} | RSI {rsi_str} | ADX {adx_str} | "
-            f"💰 {res['close_price']}{no_volume_suffix}"
+            f"💰 {res['close_price']}"
         )
 
     vol_1h, vol_24h, vol_7d = get_extra_volumes(symbol, source)
@@ -1386,7 +1378,6 @@ def main():
 
     bullish_count = 0
     bearish_count = 0
-    pass_count = 0
     duplicate_skipped = 0
     messages_sent = 0
 
@@ -1418,15 +1409,11 @@ def main():
             else:
                 bearish_count += 1
 
-            if not result["no_volume"]:
-                pass_count += 1
-
             state[key] = result["candle_open_ms"]
 
             print(
                 f"[SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
-                f"(no_volume={result['no_volume']}, "
-                f"htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
+                f"(htf_confirm={result['htf_confirm']} [{result['htf_timeframe']}], "
                 f"RSI={result['rsi_value']}, ADX={result['adx_value']}, "
                 f"DI-diff={result['di_diff']:.2f}, Chop={result['choppiness']:.1f})"
             )
@@ -1448,7 +1435,6 @@ def main():
         f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
         f"مجموع سیگنال‌های جدید (فقط هم‌جهت با HTF): <b>{total_signals}</b> "
         f"(🟢 {bullish_count} #long / 🔴 {bearish_count} #short)\n"
-        f"✅ #pass (حجم کامل): <b>{pass_count}</b>\n"
         f"تکراری نادیده‌گرفته‌شده: {duplicate_skipped}"
     )
 
