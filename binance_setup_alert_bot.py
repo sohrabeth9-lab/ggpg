@@ -29,52 +29,18 @@ Multi-Timeframe
     به همین خاطر مفهوم "ریسکی" و پیام جدا برای سیگنال‌های ریسکی از این
     نسخه کاملاً حذف شده.
   - شرط حجم فیلتر نیست؛ فقط تگ جدا (No-Volume-Condition)
-  - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation) - فقط تگ،
-    نه فیلتر
+  - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation) - این نسخه:
+    این بند حالا یک فیلتر واقعی و اجباریه (نه فقط یه تگ روی پیام).
+    اگه سیگنال با تایم‌فریم بالاتر هم‌جهت نباشه (یعنی همون سیگنال
+    "زرد/⚠️" تو اندیکاتور پاین) یا اصلاً نشه هم‌جهتی رو تشخیص داد
+    (داده‌ی کافی نبود)، سیگنال کاملاً کنار گذاشته میشه و هیچ پیامی
+    براش فرستاده نمیشه.
 
 --- منبع داده (این نسخه) ---
 اولویت اول: بایننس SPOT (نه فیوچرز، چون فیوچرز بایننس رو خیلی از
 سرورها با خطای 451 بلاک می‌کنه).
 اولویت دوم: MEXC فیوچرز (USDT-M Perpetual) - فقط برای نمادهایی که
 اصلاً تو بایننس اسپات موجود نیستن.
-
---- تغییرات این نسخه (سینک کامل با آخرین اندیکاتور Pine) ---
-  - همه‌ی محاسبات بدنه/سایه از رنج کندل به ATR تغییر کردن
-    (MAX_BODY_ATR_MULT, MIN_DOMINANT_SHADOW_ATR_MULT,
-    MAX_OPPOSITE_SHADOW_PCT).
-  - فیلتر موقعیت بدنه (Body Position Threshold - hammer/shooting star)
-    اضافه شد که قبلاً اصلاً وجود نداشت.
-  - نسبت‌های تلورانسی سایه (SHADOW_RATIO_*, SHADOW_TOLERANCE_PERCENT)
-    که مال نسخه‌ی قدیمی اندیکاتور بودن کاملاً حذف شدن.
-  - فیلتر عدم‌برخورد کلوز به SMA25 (SMA25_TOUCH_LOOKBACK) که تو
-    اندیکاتور جدید وجود نداره، حذف شد.
-  - Cross Count حالا فقط SMA7×SMA25 رو می‌سنجه (نه هر سه‌تایی SMA).
-    CROSS_LOOKBACK پیش‌فرض از 25 به 20 و MAX_CROSS_COUNT از 2 به 1
-    تغییر کرد (پیش‌فرض‌های خود اندیکاتور).
-  - فیلتر Spread ATR-based (SPREAD_MULTIPLIER) با فیلتر Entanglement
-    واقعی اندیکاتور (SMA_ENTANGLEMENT_ATR_MULT روی پهنای هر سه SMA)
-    جایگزین شد.
-  - فیلتر ADX خام (ADX_THRESHOLD) حذف شد و به‌جاش فیلتر اختلاف
-    DI+/DI- اضافه شد (DMI_LEN, DMI_SMOOTHING, DI_DIFF_THRESHOLD) -
-    دقیقاً مثل اندیکاتور.
-  - فیلتر Choppiness Index اضافه شد (CHOP_LEN, CHOP_THRESHOLD).
-  - فیلتر ساختار Higher-High/Higher-Low اضافه شد (SWING_LOOKBACK).
-  - مفهوم "ریسکی" (risky) و پیام جداگانه‌ی "سیگنال‌های ریسکی" برای
-    تلگرام کاملاً حذف شد، چون تو اندیکاتور جدید فیلتر ترند/رنج جزو
-    خود شرط سیگناله، نه یه تگ هشدار جدا.
-
-نکات فنی:
-  - فرمت نماد بایننس همون فرمت داخلی بدون آندرلاینه ("BTCUSDT")،
-    اینتروال‌هاش هم دقیقاً همون رشته‌های داخلی (15m, 1h, 4h, 1d, ...)
-    هستن - نیازی به تبدیل نیست.
-  - فرمت نماد MEXC با آندرلاین جداست ("BTC_USDT") و اینتروال‌هاش
-    اسم متفاوت دارن (Min15, Hour4, ...)؛ این تبدیل‌ها فقط موقع صدا
-    زدن API مکسی انجام میشه.
-  - مارکت‌کپ/رنک (CoinGecko) از این نسخه کاملاً حذف شده تا سرعت اسکن
-    بیشتر بشه.
-  - خط 🕒 تو پیام تلگرام، زمان بسته‌شدن کندل رو نشون میده (نه زمان
-    ارسال پیام). اگه چند تایم‌فریم تو یه پیام باشن، جدیدترین زمان
-    بسته‌شدن کندل بینشون نمایش داده میشه.
 
 نصب پیش‌نیازها:
     pip install requests
@@ -155,6 +121,10 @@ ATR_LEN = int(os.environ.get("ATR_LEN", "14"))
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
 
 # --- تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation) ---
+# این نسخه: این پرچم الان یک فیلتر واقعیه. اگه True باشه، فقط سیگنال‌هایی
+# که با SMA-Stack تایم‌فریم بالاتر هم‌جهت باشن (htf_confirm == True)
+# فرستاده میشن؛ سیگنال‌های ناهم‌جهت (زرد/⚠️) و سیگنال‌هایی که هم‌جهتی‌شون
+# قابل تشخیص نبوده (داده‌ی HTF ناکافی) کلاً حذف میشن.
 USE_HTF_CONFIRM = os.environ.get("USE_HTF_CONFIRM", "1") == "1"
 AUTO_HTF = os.environ.get("AUTO_HTF", "1") == "1"
 MANUAL_HTF = os.environ.get("MANUAL_HTF", "1h")  # فقط وقتی AUTO_HTF خاموشه یا نگاشتی نداره
@@ -195,12 +165,6 @@ STATE_FILE = os.path.join(
 )
 
 # --- بایننس اسپات (اولویت اول) ---
-# نکته: api.binance.com خیلی از سرورها/آی‌پی‌ها رو با خطای 451 (محدودیت
-# جغرافیایی) بلاک می‌کنه. data-api.binance.vision یه آینه‌ی رسمی و
-# بدون‌نیاز-به-کلید از بایننسه که فقط داده‌ی عمومی بازار (exchangeInfo,
-# klines, depth, ticker) رو می‌ده و ساخته شده دقیقاً برای دورزدن همین
-# محدودیت جغرافیایی روی درخواست‌های صرفاً اطلاعاتی (نه ترید). اگه باز
-# هم بلاک شد، با متغیر محیطی BINANCE_SPOT_BASE می‌تونی عوضش کنی.
 BINANCE_SPOT_BASE = os.environ.get("BINANCE_SPOT_BASE", "https://data-api.binance.vision")
 BINANCE_DEPTH_VALID_LIMITS = [5, 10, 20, 50, 100, 500, 1000, 5000]
 
@@ -232,29 +196,13 @@ TV_INTERVAL_MAP = {
 TEHRAN_OFFSET = timedelta(hours=3, minutes=30)
 
 # --- موازی‌سازی و محافظ ریت‌لیمیت ---
-# چند تا نماد/تایم‌فریم هم‌زمان چک بشن. عدد بالاتر = سریع‌تر، ولی
-# ریسک برخورد به ریت‌لیمیت صرافی هم بیشتر میشه. ۲۰ برای این حجم
-# درخواست (TOP_N=250 پیش‌فرض) امن و متعادله؛ محافظ ۴۲۹/۴۱۸ هم پشتش
-# هست اگه به مرز نزدیک بشه.
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "20"))
-
-# اگه یه درخواست با 429 (Too Many Requests) یا 418 (IP Ban موقت) یا
-# خطای شبکه‌ی گذرا مواجه شد، چندبار با فاصله (بک‌آف نمایی) دوباره
-# امتحان میشه قبل از اینکه واقعاً شکست بخوره.
 MAX_HTTP_RETRIES = int(os.environ.get("MAX_HTTP_RETRIES", "4"))
 
 # =======================================================================
 
 
 def http_get_with_retry(url, params=None, timeout=15, max_retries=MAX_HTTP_RETRIES):
-    """
-    یه GET با محافظت در برابر ریت‌لیمیت صرافی‌ها. اگه پاسخ 429 (ریت‌لیمیت)
-    یا 418 (بن موقت آی‌پی) بود، یا یه خطای شبکه‌ی گذرا (تایم‌اوت، قطعی
-    اتصال) یا خطای سمت سرور (5xx) پیش اومد، به‌جای شکست فوری، بر اساس
-    هدر Retry-After (اگه صرافی فرستاده باشه) یا بک‌آف نمایی صبر می‌کنه
-    و دوباره تلاش می‌کنه. بعد از رد شدن از max_retries تلاش، آخرین خطا
-    رو raise می‌کنه (که فراخوان می‌تونه مثل قبل با try/except بگیردش).
-    """
     last_exc = None
 
     for attempt in range(max_retries + 1):
@@ -295,7 +243,6 @@ def http_get_with_retry(url, params=None, timeout=15, max_retries=MAX_HTTP_RETRI
 
 
 def to_mexc_symbol(symbol: str, quote_asset: str) -> str:
-    """تبدیل نماد سبک بایننس ('BTCUSDT') به فرمت MEXC فیوچرز ('BTC_USDT')."""
     if symbol.endswith(quote_asset):
         base = symbol[: -len(quote_asset)]
         return f"{base}_{quote_asset}"
@@ -304,7 +251,6 @@ def to_mexc_symbol(symbol: str, quote_asset: str) -> str:
 
 
 def from_mexc_symbol(mexc_symbol: str) -> str:
-    """تبدیل نماد MEXC ('BTC_USDT') به فرمت داخلی بدون آندرلاین ('BTCUSDT')."""
     return mexc_symbol.replace("_", "")
 
 
@@ -325,7 +271,6 @@ def interval_to_ms(interval: str) -> int:
 # --------------------------- بایننس اسپات ---------------------------
 
 def get_binance_all_symbols(quote_asset: str):
-    """همه‌ی نمادهای اسپات فعال بایننس با quote asset مشخص‌شده."""
     url = f"{BINANCE_SPOT_BASE}/api/v3/exchangeInfo"
 
     try:
@@ -352,7 +297,6 @@ def get_binance_all_symbols(quote_asset: str):
 
 
 def get_binance_top_symbols_by_volume(quote_asset: str):
-    """نمادهای معتبر بایننس اسپات، مرتب‌شده نزولی بر اساس گردش مالی ۲۴ ساعته."""
     valid_symbols = get_binance_all_symbols(quote_asset)
     if not valid_symbols:
         return []
@@ -386,7 +330,6 @@ def get_binance_top_symbols_by_volume(quote_asset: str):
 
 
 def get_binance_klines(symbol: str, interval: str, limit: int):
-    """کندل‌های اسپات بایننس - فرمت پیش‌فرض بایننس همون فرمتیه که کد ازش استفاده می‌کنه."""
     url = f"{BINANCE_SPOT_BASE}/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
 
@@ -396,14 +339,14 @@ def get_binance_klines(symbol: str, interval: str, limit: int):
     rows = []
     for k in data:
         rows.append([
-            int(k[0]),     # open_time_ms
-            float(k[1]),   # open
-            float(k[2]),   # high
-            float(k[3]),   # low
-            float(k[4]),   # close
-            float(k[5]),   # base volume
-            int(k[6]),     # close_time_ms
-            float(k[7]),   # quote asset volume (turnover)
+            int(k[0]),
+            float(k[1]),
+            float(k[2]),
+            float(k[3]),
+            float(k[4]),
+            float(k[5]),
+            int(k[6]),
+            float(k[7]),
         ])
 
     return rows
@@ -433,10 +376,6 @@ def get_binance_depth(symbol: str, limit: int):
 # --------------------------- MEXC فیوچرز ---------------------------
 
 def get_mexc_all_symbols(quote_asset: str):
-    """
-    همه‌ی قراردادهای فیوچرز فعال (Perpetual) با quote asset مشخص‌شده رو
-    از MEXC فیوچرز برمی‌گردونه (فرمت داخلی، بدون آندرلاین).
-    """
     url = f"{MEXC_FUTURES_BASE}/api/v1/contract/detail"
 
     try:
@@ -456,13 +395,13 @@ def get_mexc_all_symbols(quote_asset: str):
 
     symbols = []
     for s in data:
-        if s.get("state") != 0:  # 0 = enabled/trading
+        if s.get("state") != 0:
             continue
 
         if s.get("quoteCoin") != quote_asset:
             continue
 
-        if FUTURES_ONLY_PERPETUAL and s.get("futureType") != 1:  # 1 = perpetual
+        if FUTURES_ONLY_PERPETUAL and s.get("futureType") != 1:
             continue
 
         mexc_symbol = s.get("symbol")
@@ -475,7 +414,6 @@ def get_mexc_all_symbols(quote_asset: str):
 
 
 def get_mexc_top_symbols_by_volume(quote_asset: str):
-    """نمادهای معتبر فیوچرز MEXC، مرتب‌شده نزولی بر اساس گردش مالی ۲۴ ساعته."""
     valid_symbols = get_mexc_all_symbols(quote_asset)
     if not valid_symbols:
         return []
@@ -519,11 +457,6 @@ def get_mexc_top_symbols_by_volume(quote_asset: str):
 
 
 def get_mexc_klines(symbol: str, interval: str, limit: int):
-    """
-    کندل‌های فیوچرز MEXC رو می‌گیره و به همون فرمت ردیفی بایننس نرمالایز
-    می‌کنه: [open_time_ms, open, high, low, close, vol, close_time_ms,
-    quote_turnover]
-    """
     mexc_interval = MEXC_INTERVAL_MAP.get(interval)
     if not mexc_interval:
         raise ValueError(f"اینتروال {interval} برای MEXC فیوچرز پشتیبانی نمیشه")
@@ -602,7 +535,6 @@ def get_mexc_depth(symbol: str, limit: int):
     raw_bids = data.get("bids", [])
     raw_asks = data.get("asks", [])
 
-    # هر ردیف MEXC به فرمت [price, vol, count] هست؛ فقط price و vol لازمه
     bids = [(float(row[0]), float(row[1])) for row in raw_bids]
     asks = [(float(row[0]), float(row[1])) for row in raw_asks]
 
@@ -612,11 +544,6 @@ def get_mexc_depth(symbol: str, limit: int):
 # ------------------------- دیسپچر چند-صرافی -------------------------
 
 def get_top_symbols_combined(quote_asset: str, top_n: int):
-    """
-    اولویت با بایننس اسپاته. نمادهایی که تو بایننس نیستن (فقط تو
-    مکسی فیوچرز موجودن) به استخر اضافه میشن. کل استخر بر اساس حجم
-    ۲۴ساعته مرتب و TOP_N تاش برداشته میشه. خروجی: (symbols, source_map)
-    """
     binance_rows = get_binance_top_symbols_by_volume(quote_asset)
     binance_symbol_set = {s for s, _ in binance_rows}
 
@@ -746,12 +673,6 @@ def get_order_book_summary(symbol: str, source: str, limit: int = ORDERBOOK_LIMI
 
 
 def market_search_links(symbol: str, quote_asset: str):
-    """
-    لینک جستجوی CoinGecko و CoinMarketCap برای نماد - بدون هیچ درخواست
-    API (چون اسلاگ دقیق صفحه‌ی هر کوین با ticker یکی نیست، به‌جای صفحه‌ی
-    دقیق، لینک جستجو ساخته میشه که همیشه کار می‌کنه و صفر هزینه‌ی زمانی
-    داره).
-    """
     base_asset = symbol[:-len(quote_asset)] if symbol.endswith(quote_asset) else symbol
 
     coingecko_link = f"https://www.coingecko.com/en/search?query={base_asset}"
@@ -766,7 +687,6 @@ def tradingview_link(symbol: str, timeframe: str, source: str) -> str:
     if source == "binance":
         link = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}"
     else:
-        # ".P" یعنی چارت پرپچوال فیوچرز تو TradingView
         link = f"https://www.tradingview.com/chart/?symbol=MEXC:{symbol}.P"
 
     if tv_interval:
@@ -860,17 +780,11 @@ def true_range_series(highs, lows, closes):
 
 
 def atr_series(highs, lows, closes, length):
-    """معادل ta.atr(length) در پاین‌اسکریپت: rma رو true range."""
     tr = true_range_series(highs, lows, closes)
     return rma(tr, length)
 
 
 def dmi_series(highs, lows, closes, di_length, adx_smoothing):
-    """
-    معادل ta.dmi(di_length, adx_smoothing) در پاین‌اسکریپت. سه لیست
-    هم‌طول برمی‌گردونه: (plus_di, minus_di, adx). خود اندیکاتور فقط
-    از اختلاف plus_di - minus_di استفاده می‌کنه (نه adx خام).
-    """
     n = len(highs)
     plus_dm = [0.0] * n
     minus_dm = [0.0] * n
@@ -913,11 +827,6 @@ def dmi_series(highs, lows, closes, di_length, adx_smoothing):
 
 
 def cross_events(series_a, series_b):
-    """
-    معادل ta.cross(a, b) پاین‌اسکریپت روی کل سری: لیست بولین هم‌طول با
-    ورودی‌ها که True هست اگه دو سری بین کندل قبل و کندل جاری از هم رد
-    شده باشن (تغییر علامت اختلافشون).
-    """
     n = len(series_a)
     result = [False] * n
 
@@ -938,12 +847,6 @@ def cross_events(series_a, series_b):
 
 
 def rolling_bool_sum(bool_series, idx, lookback):
-    """
-    معادل math.sum(series, lookback) پاین‌اسکریپت در اندیس idx: جمع
-    تعداد True تو lookback کندل اخیر (شامل خود idx). اگه به اندازه‌ی
-    کافی کندل قبلش برای پر کردن کل پنجره نباشه، None برمی‌گردونه
-    (یعنی هنوز تو وارم‌آپیم).
-    """
     if idx - lookback + 1 < 0:
         return None
 
@@ -952,11 +855,6 @@ def rolling_bool_sum(bool_series, idx, lookback):
 
 
 def choppiness_index_at(highs, lows, tr_series, idx, length):
-    """
-    معادل محاسبه‌ی choppiness تو پاین‌اسکریپت در اندیس idx:
-    100 * log10( sum(tr, length) / (highest(high,length)-lowest(low,length)) ) / log10(length)
-    اگه پنجره‌ی کامل هنوز موجود نباشه، None برمی‌گردونه.
-    """
     if idx - length + 1 < 0:
         return None
 
@@ -977,14 +875,6 @@ def choppiness_index_at(highs, lows, tr_series, idx, length):
 
 
 def structure_flags_at(highs, lows, idx, swing_lookback):
-    """
-    معادل:
-      structure_uptrend   = low  > ta.lowest(low[1],  swing_lookback)
-      structure_downtrend = high < ta.highest(high[1], swing_lookback)
-    یعنی کف/سقف کندل جاری نسبت به پایین‌ترین/بالاترین swing_lookback
-    کندل *قبل* از کندل جاری (بدون خود کندل جاری) سنجیده میشه.
-    اگه به اندازه‌ی کافی تاریخچه نباشه، (None, None) برمی‌گردونه.
-    """
     if idx - swing_lookback < 0:
         return None, None
 
@@ -1064,10 +954,11 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     اسکریپت Pine v6 "Setup Candle - Step 10 (+ SMA Entanglement)".
     داده‌ها بسته به source از بایننس اسپات یا مکسی فیوچرز گرفته میشن.
 
-    توجه: فیلتر ترند/رنج (Choppiness + Structure + DI-Diff + Cross +
-    Entanglement) بخشی اجباری از خود شرط سیگناله، نه یه تگ جدا. یعنی
-    اگه این تابع دیکشنری برگردونه، سیگنال از قبل "تمیز" و تأییدشده‌ست
-    و هیچ مفهوم "ریسکی" جداگانه‌ای وجود نداره.
+    توجه (این نسخه): تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation)
+    الان یه فیلتر واقعیه، نه فقط یه تگ. اگه USE_HTF_CONFIRM روشن باشه و
+    سیگنال با تایم‌فریم بالاتر هم‌جهت نباشه (سیگنال "زرد/⚠️" اندیکاتور
+    پاین) یا اصلاً نشه هم‌جهتی رو تشخیص داد (داده‌ی HTF ناکافی)، این
+    تابع None برمی‌گردونه؛ یعنی هیچ پیامی براش فرستاده نمیشه.
     """
 
     raw = get_klines(symbol, timeframe, KLINES_LIMIT, source)
@@ -1246,6 +1137,12 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
             htf_stack_bull, htf_stack_bear = htf_stack
             htf_confirm = htf_stack_bull if signal == "bullish" else htf_stack_bear
 
+        # === تغییر درخواستی: سیگنال‌های "زرد" (ناهم‌جهت با HTF) و
+        # سیگنال‌هایی که هم‌جهتی‌شون قابل تشخیص نبوده (htf_confirm=None،
+        # یعنی داده‌ی HTF ناکافی) کلاً حذف میشن و اصلاً فرستاده نمیشن. ===
+        if htf_confirm is not True:
+            return None
+
     interval_ms = interval_to_ms(timeframe)
     candles_ago = max(0, int((now_ms - close_times[idx]) // interval_ms))
 
@@ -1338,23 +1235,10 @@ def send_telegram(text: str):
 def build_symbol_message(symbol, tf_results, source):
     """
     پیام واحد برای یک نماد که ممکنه شامل سیگنال چند تایم‌فریم باشه.
-    چون فیلتر ترند/رنج الان جزو خود شرط سیگناله، همه‌ی سیگنال‌های این
-    پیام از قبل "تمیز" هستن؛ دیگه هیچ تگ ⚠️ ریسکی وجود نداره.
-
-    فرمت:
-      🟢 #LONG #SYMBOL   (یا 🔴 #SHORT #SYMBOL)
-
-      ⏱️ 15m ✅> 1h | RSI 40.4 | ADX 27.3 | 💰 42.11 | 🟡NoVol
-      ⏱️ 1h ❌> 4h | RSI ...
-
-      📊 Vol: 1h 163K | 24h 13.3M | 7d 81M
-      📖 OrderBook: Buy 187K / Sell 247K (-12.6%)
-
-      🔗 <tradingview link>
-      🦎 <coingecko search link>
-      💹 <coinmarketcap search link>
-
-      🕒 2026-09-02 07:15 UTC | 10:45 (+3:30)   <- زمان بسته‌شدن کندل
+    چون فیلتر ترند/رنج و فیلتر HTF Confirmation الان جزو خود شرط
+    سیگناله، همه‌ی سیگنال‌های این پیام از قبل "تمیز" و "هم‌جهت با
+    تایم بالاتر" هستن؛ دیگه هیچ حالت ⚠️/زرد یا ❌ اینجا نمایش داده
+    نمیشه (چون اصلاً به این تابع نمی‌رسه).
     """
 
     first_signal = tf_results[0][1]["signal"]
@@ -1367,11 +1251,9 @@ def build_symbol_message(symbol, tf_results, source):
     lines_per_tf = []
 
     for tf, res in tf_results:
-        htf_arrow = ""
-        if res.get("htf_confirm") is True:
-            htf_arrow = f" ✅> {res.get('htf_timeframe')}"
-        elif res.get("htf_confirm") is False:
-            htf_arrow = f" ❌> {res.get('htf_timeframe')}"
+        # htf_confirm همیشه True هست (وگرنه سیگنال از evaluate_symbol
+        # اصلاً برنمی‌گشت)، پس همیشه علامت ✅ نشون داده میشه.
+        htf_arrow = f" ✅> {res.get('htf_timeframe')}" if res.get("htf_timeframe") else ""
 
         rsi_value = res["rsi_value"]
         rsi_str = "?" if rsi_value is None else f"{rsi_value:.1f}"
@@ -1415,7 +1297,6 @@ def build_symbol_message(symbol, tf_results, source):
 
     tf_block = "\n".join(lines_per_tf)
 
-    # زمان بسته‌شدن کندل (نه زمان ارسال پیام) - جدیدترین بین تایم‌فریم‌های این پیام
     latest_close_ms = max(res["candle_close_ms"] for _, res in tf_results)
     close_utc = datetime.fromtimestamp(latest_close_ms / 1000, tz=timezone.utc)
     close_tehran = close_utc + TEHRAN_OFFSET
@@ -1439,12 +1320,6 @@ def build_symbol_message(symbol, tf_results, source):
 
 
 def _evaluate_task(symbol, timeframe, source):
-    """
-    یه تسک مستقل و بی‌طرف (بدون هیچ side effect روی state مشترک) که
-    داخل thread pool اجرا میشه: فقط داده می‌گیره و سیگنال محاسبه
-    می‌کنه، هیچ‌چیزی نمی‌نویسه/تغییر نمی‌ده. هر خطایی رو هم خودش
-    catch می‌کنه تا یه تسک ناموفق بقیه‌ی pool رو خراب نکنه.
-    """
     try:
         result = evaluate_symbol(symbol, timeframe, source)
         return symbol, timeframe, source, result, None
@@ -1469,19 +1344,17 @@ def main():
         f"Checking top {len(symbols)} symbols "
         f"(priority: Binance Spot, fallback: MEXC Futures, TOP_N={TOP_N}) "
         f"on timeframes {TIMEFRAMES}... "
-        f"(HTF confirm: {'on' if USE_HTF_CONFIRM else 'off'}, "
+        f"(HTF confirm: {'on (filter, non-aligned/unconfirmed dropped)' if USE_HTF_CONFIRM else 'off'}, "
         f"workers: {MAX_WORKERS})"
     )
 
-    # --- فاز ۱: موازی — فقط گرفتن دیتا و محاسبه‌ی سیگنال، بدون هیچ ---
-    # --- side effect ای رو state مشترک (dedup/شمارش/ارسال پیام) ---
     tasks = [
         (symbol, timeframe, source_map[symbol])
         for symbol in symbols
         for timeframe in TIMEFRAMES
     ]
 
-    raw_results = {}  # (symbol, timeframe) -> result dict یا None
+    raw_results = {}
     error_count = 0
 
     scan_started_at = time.monotonic()
@@ -1508,13 +1381,9 @@ def main():
     print(
         f"[INFO] فاز موازی تموم شد: {len(tasks)} ترکیب نماد/تایم‌فریم "
         f"در {scan_elapsed:.1f} ثانیه ({error_count} خطا، "
-        f"{len(raw_results)} نتیجه‌ی معتبر)."
+        f"{len(raw_results)} نتیجه‌ی معتبر و تأییدشده با HTF)."
     )
 
-    # --- فاز ۲: سریال — دیدوپ/شمارش/ساخت و ارسال پیام (روی state) ---
-    # چون فیلتر ترند/رنج الان جزو خود شرط سیگناله، دیگه چیزی به اسم
-    # "سیگنال ریسکی" وجود نداره که جدا تگ یا جدا ارسال بشه؛ هر سیگنالی
-    # که از evaluate_symbol برگرده از قبل تأییدشده‌ست.
     bullish_count = 0
     bearish_count = 0
     pass_count = 0
@@ -1549,7 +1418,7 @@ def main():
             else:
                 bearish_count += 1
 
-            if not result["no_volume"] and result.get("htf_confirm") is True:
+            if not result["no_volume"]:
                 pass_count += 1
 
             state[key] = result["candle_open_ms"]
@@ -1577,9 +1446,9 @@ def main():
         f"🕒 {finish_time_str}\n"
         f"⏱ زمان اسکن: {scan_elapsed:.1f} ثانیه\n"
         f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
-        f"مجموع سیگنال‌های جدید: <b>{total_signals}</b> "
+        f"مجموع سیگنال‌های جدید (فقط هم‌جهت با HTF): <b>{total_signals}</b> "
         f"(🟢 {bullish_count} #long / 🔴 {bearish_count} #short)\n"
-        f"✅ #pass (حجم + HTF کامل): <b>{pass_count}</b>\n"
+        f"✅ #pass (حجم کامل): <b>{pass_count}</b>\n"
         f"تکراری نادیده‌گرفته‌شده: {duplicate_skipped}"
     )
 
