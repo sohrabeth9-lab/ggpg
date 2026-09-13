@@ -3,7 +3,7 @@ Setup Candle + SMA Alert Bot (Binance SPOT + MEXC FUTURES fallback -> Telegram)
 Multi-Timeframe
 ============================================================================
 منطق سیگنال دقیقاً منطبق با آخرین نسخه‌ی اسکریپت Pine v6
-(indicator "Setup Candle - Step 10 (+ SMA Entanglement)") هست:
+(indicator "Setup Candle - Step 15 (MACD Exit Signal)") هست:
   - بدنه کوچک، بر اساس ATR (نه رنج خود کندل): body <= ATR * MAX_BODY_ATR_MULT
   - موقعیت بدنه در رنج کندل (Body Position): برای بولیش بدنه باید تو
     پایین رنج باشه (hammer)، برای بریش تو بالای رنج (shooting star)
@@ -26,15 +26,33 @@ Multi-Timeframe
   - همه‌ی فیلترهای بالا (Chop + Structure + DI-Diff + Cross + عدم‌درگیری)
     الان بخشی جدایی‌ناپذیر از خود شرط سیگنال هستن، نه یه تگ "ریسکی"
     جدا؛ یعنی اگه بازار رنج/درگیر باشه، اصلاً سیگنالی تولید نمیشه.
-    به همین خاطر مفهوم "ریسکی" و پیام جدا برای سیگنال‌های ریسکی از این
-    نسخه کاملاً حذف شده.
-  - شرط حجم فیلتر نیست؛ فقط تگ جدا (No-Volume-Condition)
-  - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation) - این نسخه:
-    این بند حالا یک فیلتر واقعی و اجباریه (نه فقط یه تگ روی پیام).
-    اگه سیگنال با تایم‌فریم بالاتر هم‌جهت نباشه (یعنی همون سیگنال
-    "زرد/⚠️" تو اندیکاتور پاین) یا اصلاً نشه هم‌جهتی رو تشخیص داد
-    (داده‌ی کافی نبود)، سیگنال کاملاً کنار گذاشته میشه و هیچ پیامی
-    براش فرستاده نمیشه.
+  - (جدید - فیلترهای "انتهای روند" / Trend Exhaustion): این‌ها هم بخشی
+    اجباری از شرط سیگنالن، هر کدوم جدا قابل خاموش/روشن کردن:
+      1) ADX Rollover: ADX باید نسبت به ADX_ROLLOVER_LOOKBACK کندل قبل
+         در حال رشد باشه (و در جهت سیگنال)
+      2) فاصله از SMA99: close نباید بیشتر از MAX_DIST_SMA99_ATR برابر
+         ATR از SMA99 فاصله گرفته باشه (اورایکستنشن بلندمدت)
+      3) واگرایی RSI (پیش‌فرض خاموش): اگه high/low جدید ثبت بشه ولی
+         RSI هم‌جهت نره، سیگنال حذف میشه
+      4) افت مومنتوم SMA25: اگه فاصله‌ی close از SMA25 داره کوچیک‌تر
+         میشه و شیب SMA25 هم داره کند میشه، یعنی مومنتوم افت کرده
+      5) MFI Overbought/Oversold: سیگنال بولیش وقتی MFI بالای
+         MFI_OVERBOUGHT هست، یا بریش وقتی زیر MFI_OVERSOLD هست، حذف میشه
+  - (جدید - MACD Exit Signal / Trend Fatigue): در طول
+    MACD_EXIT_LOOKBACK کندل اخیر، اگه حداقل MACD_EXIT_SIDE_PCT درصد
+    هیستوگرام MACD یک طرف بوده (مثبت برای صعودی) و به‌طور پیوسته داره
+    کوچیک‌تر میشه (افت مومنتوم)، هم سیگنال ورود حذف میشه، و هم اگه
+    اون کندل از قبل واجد بقیه‌ی شرایط بوده (would-be signal)، این
+    تابع یک نتیجه‌ی جداگانه با signal="exit_long"/"exit_short"
+    برمی‌گردونه (هشدار خروج برای پوزیشن‌های باز، نه سیگنال ورود جدید)
+  - فیلتر حجم (اختیاری، پیش‌فرض خاموش - USE_VOLUME_FILTER): اگه روشن
+    باشه، حجم کندل سیگنال باید کمتر از VOLUME_DECLINE_MULT برابر حجم
+    کندل قبل باشه
+  - تایید هم‌جهتی با تایم‌فریم بالاتر (HTF Confirmation): این بند یک
+    فیلتر واقعی و اجباریه (نه فقط یه تگ روی پیام) و فقط روی سیگنال‌های
+    ورود (bullish/bearish) اعمال میشه، نه روی سیگنال خروج MACD.
+    اگه سیگنال با تایم‌فریم بالاتر هم‌جهت نباشه یا اصلاً نشه هم‌جهتی
+    رو تشخیص داد، سیگنال کاملاً کنار گذاشته میشه.
 
 --- منبع داده (این نسخه) ---
 اولویت اول: بایننس SPOT (نه فیوچرز، چون فیوچرز بایننس رو خیلی از
@@ -81,9 +99,9 @@ TOP_N = int(os.environ.get("TOP_N", "400"))   # نمادهای برتر بر ا�
 FUTURES_ONLY_PERPETUAL = os.environ.get("FUTURES_ONLY_PERPETUAL", "1") == "1"
 
 # --- بدنه و سایه (بر مبنای ATR - دقیقاً مطابق اندیکاتور جدید) ---
-MAX_BODY_ATR_MULT = float(os.environ.get("MAX_BODY_ATR_MULT", "0.4"))
+MAX_BODY_ATR_MULT = float(os.environ.get("MAX_BODY_ATR_MULT", "0.3"))
 MIN_DOMINANT_SHADOW_ATR_MULT = float(os.environ.get("MIN_DOMINANT_SHADOW_ATR_MULT", "0.2"))
-MAX_OPPOSITE_SHADOW_PCT = float(os.environ.get("MAX_OPPOSITE_SHADOW_PCT", "25.0"))
+MAX_OPPOSITE_SHADOW_PCT = float(os.environ.get("MAX_OPPOSITE_SHADOW_PCT", "35.0"))
 BODY_POSITION_THRESHOLD = float(os.environ.get("BODY_POSITION_THRESHOLD", "0.5"))
 
 SMA_FAST_LEN = int(os.environ.get("SMA_FAST_LEN", "7"))
@@ -91,17 +109,17 @@ SMA_MID_LEN = int(os.environ.get("SMA_MID_LEN", "25"))
 SMA_TREND_LEN = int(os.environ.get("SMA_TREND_LEN", "99"))
 
 # فاصله‌ی close کندل ستاپ تا SMA7 - بر مبنای ATR
-SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.0"))
+SMA7_MAX_DIST_MULT = float(os.environ.get("SMA7_MAX_DIST_MULT", "1.4"))
 
 # فیلتر Cross Count: فقط تقاطع SMA7×SMA25 تو این تعداد کندل اخیر
 # نباید از MAX_CROSS_COUNT بیشتر باشه (بیشتر از این یعنی بازار رنجه)
-CROSS_LOOKBACK = int(os.environ.get("CROSS_LOOKBACK", "20"))
+CROSS_LOOKBACK = int(os.environ.get("CROSS_LOOKBACK", "10"))
 MAX_CROSS_COUNT = int(os.environ.get("MAX_CROSS_COUNT", "1"))
 
 # فیلتر درگیری/فشردگی هر سه SMA با هم: پهنای بین بالاترین و
 # پایین‌ترین SMA باید حداقل این‌قدر برابر ATR باشه، وگرنه "درگیر"
 # (entangled) حساب میشه و سیگنال حذف میشه
-SMA_ENTANGLEMENT_ATR_MULT = float(os.environ.get("SMA_ENTANGLEMENT_ATR_MULT", "2.0"))
+SMA_ENTANGLEMENT_ATR_MULT = float(os.environ.get("SMA_ENTANGLEMENT_ATR_MULT", "1.0"))
 
 # --- Choppiness Index (رنج/ترند) ---
 CHOP_LEN = int(os.environ.get("CHOP_LEN", "14"))
@@ -119,6 +137,37 @@ DI_DIFF_THRESHOLD = float(os.environ.get("DI_DIFF_THRESHOLD", "5.0"))
 ATR_LEN = int(os.environ.get("ATR_LEN", "14"))
 
 RSI_LEN = int(os.environ.get("RSI_LEN", "21"))
+
+# --- فیلترهای «انتهای روند» (Trend Exhaustion) - جدید ---
+USE_ADX_ROLLOVER_FILTER = os.environ.get("USE_ADX_ROLLOVER_FILTER", "1") == "1"
+ADX_ROLLOVER_LOOKBACK = int(os.environ.get("ADX_ROLLOVER_LOOKBACK", "5"))
+
+USE_SMA99_OVEREXT_FILTER = os.environ.get("USE_SMA99_OVEREXT_FILTER", "1") == "1"
+MAX_DIST_SMA99_ATR = float(os.environ.get("MAX_DIST_SMA99_ATR", "6"))
+
+USE_RSI_DIV_FILTER = os.environ.get("USE_RSI_DIV_FILTER", "0") == "1"
+DIV_LOOKBACK = int(os.environ.get("DIV_LOOKBACK", "10"))
+
+USE_MOMENTUM_FADE_FILTER = os.environ.get("USE_MOMENTUM_FADE_FILTER", "1") == "1"
+MOMENTUM_FADE_LOOKBACK = int(os.environ.get("MOMENTUM_FADE_LOOKBACK", "10"))
+
+MACD_FAST_LEN = int(os.environ.get("MACD_FAST_LEN", "12"))
+MACD_SLOW_LEN = int(os.environ.get("MACD_SLOW_LEN", "26"))
+MACD_SIGNAL_LEN = int(os.environ.get("MACD_SIGNAL_LEN", "9"))
+
+USE_MFI_FILTER = os.environ.get("USE_MFI_FILTER", "1") == "1"
+MFI_LEN = int(os.environ.get("MFI_LEN", "14"))
+MFI_OVERBOUGHT = float(os.environ.get("MFI_OVERBOUGHT", "90.0"))
+MFI_OVERSOLD = float(os.environ.get("MFI_OVERSOLD", "10.0"))
+
+# --- MACD Exit Signal (Trend Fatigue) - جدید ---
+USE_MACD_EXIT_SIGNAL = os.environ.get("USE_MACD_EXIT_SIGNAL", "1") == "1"
+MACD_EXIT_LOOKBACK = int(os.environ.get("MACD_EXIT_LOOKBACK", "10"))
+MACD_EXIT_SIDE_PCT = float(os.environ.get("MACD_EXIT_SIDE_PCT", "100.0"))
+
+# --- فیلتر حجم (اختیاری، پیش‌فرض خاموش - دقیقاً مطابق Pine جدید) ---
+USE_VOLUME_FILTER = os.environ.get("USE_VOLUME_FILTER", "0") == "1"
+VOLUME_DECLINE_MULT = float(os.environ.get("VOLUME_DECLINE_MULT", "1.2"))
 
 # --- تایید هم‌جهتی با تایم فریم بالاتر (HTF Confirmation) ---
 # این نسخه: این پرچم الان یک فیلتر واقعیه. اگه True باشه، فقط سیگنال‌هایی
@@ -149,6 +198,10 @@ KLINES_LIMIT = max(
     ATR_LEN + 20,
     CHOP_LEN + 20,
     SWING_LOOKBACK + 20,
+    MACD_SLOW_LEN + MACD_SIGNAL_LEN + MACD_EXIT_LOOKBACK + 20,
+    MFI_LEN + 20,
+    MOMENTUM_FADE_LOOKBACK * 2 + 20,
+    DIV_LOOKBACK + 20,
     150,
 )
 
@@ -826,6 +879,106 @@ def dmi_series(highs, lows, closes, di_length, adx_smoothing):
     return plus_di, minus_di, adx
 
 
+def ema(values, length):
+    """میانگین متحرک نمایی - seed با SMA اولین length مقدار (مثل rma ولی با آلفای متفاوت)."""
+    n = len(values)
+    result = [None] * n
+
+    start = None
+    for i in range(n):
+        if values[i] is not None:
+            start = i
+            break
+
+    if start is None or (n - start) < length:
+        return result
+
+    seed = sum(values[start:start + length]) / length
+    seed_idx = start + length - 1
+    result[seed_idx] = seed
+
+    alpha = 2 / (length + 1)
+    for i in range(seed_idx + 1, n):
+        result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
+
+    return result
+
+
+def macd_series(closes, fast_len, slow_len, signal_len):
+    fast_ema = ema(closes, fast_len)
+    slow_ema = ema(closes, slow_len)
+
+    n = len(closes)
+    macd_line = [None] * n
+    for i in range(n):
+        if fast_ema[i] is not None and slow_ema[i] is not None:
+            macd_line[i] = fast_ema[i] - slow_ema[i]
+
+    macd_signal = ema(macd_line, signal_len)
+
+    macd_hist = [None] * n
+    for i in range(n):
+        if macd_line[i] is not None and macd_signal[i] is not None:
+            macd_hist[i] = macd_line[i] - macd_signal[i]
+
+    return macd_line, macd_signal, macd_hist
+
+
+def mfi_series(highs, lows, closes, volumes, length):
+    n = len(highs)
+    typical = [(highs[i] + lows[i] + closes[i]) / 3 for i in range(n)]
+    raw_flow = [typical[i] * volumes[i] for i in range(n)]
+
+    pos_flow = [0.0] * n
+    neg_flow = [0.0] * n
+    for i in range(1, n):
+        if typical[i] > typical[i - 1]:
+            pos_flow[i] = raw_flow[i]
+        elif typical[i] < typical[i - 1]:
+            neg_flow[i] = raw_flow[i]
+
+    result = [None] * n
+    for i in range(length, n):
+        pos_sum = sum(pos_flow[i - length + 1: i + 1])
+        neg_sum = sum(neg_flow[i - length + 1: i + 1])
+
+        if neg_sum == 0:
+            result[i] = 100.0
+        else:
+            money_ratio = pos_sum / neg_sum
+            result[i] = 100 - (100 / (1 + money_ratio))
+
+    return result
+
+
+def is_rising(series, idx, length):
+    """معادل ta.rising پاین: پیوسته صعودی بوده در طول length کندل اخیر."""
+    if idx - length < 0:
+        return False
+
+    for i in range(length):
+        a = series[idx - i]
+        b = series[idx - i - 1]
+        if a is None or b is None or not (a > b):
+            return False
+
+    return True
+
+
+def is_falling(series, idx, length):
+    """معادل ta.falling پاین: پیوسته نزولی بوده در طول length کندل اخیر."""
+    if idx - length < 0:
+        return False
+
+    for i in range(length):
+        a = series[idx - i]
+        b = series[idx - i - 1]
+        if a is None or b is None or not (a < b):
+            return False
+
+    return True
+
+
 def cross_events(series_a, series_b):
     n = len(series_a)
     result = [False] * n
@@ -970,6 +1123,7 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     highs = [float(k[2]) for k in raw]
     lows = [float(k[3]) for k in raw]
     closes = [float(k[4]) for k in raw]
+    volumes = [float(k[5]) for k in raw]
 
     open_times = [int(k[0]) for k in raw]
     close_times = [int(k[6]) for k in raw]
@@ -993,6 +1147,10 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
     plus_di_series, minus_di_series, adx_series_vals = dmi_series(
         highs, lows, closes, DMI_LEN, DMI_SMOOTHING
     )
+    macd_line_series, macd_signal_series, macd_hist_series = macd_series(
+        closes, MACD_FAST_LEN, MACD_SLOW_LEN, MACD_SIGNAL_LEN
+    )
+    mfi_values = mfi_series(highs, lows, closes, volumes, MFI_LEN)
 
     sma7 = sma7_series[idx]
     sma25 = sma25_series[idx]
@@ -1105,26 +1263,155 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
         and direction_bear_clear and cross_trending and not_entangled
     )
 
+    # ==================== فیلترهای «انتهای روند» (Trend Exhaustion) ====================
+
+    # --- 1) ADX Rollover ---
+    adx_prev = adx_series_vals[idx - ADX_ROLLOVER_LOOKBACK] if idx - ADX_ROLLOVER_LOOKBACK >= 0 else None
+    adx_growing = (adx_val is not None and adx_prev is not None and adx_val > adx_prev)
+    adx_rising_bull = adx_growing and plus_di > minus_di
+    adx_rising_bear = adx_growing and minus_di > plus_di
+
+    # --- 2) فاصله از SMA99 (اورایکستنشن بلندمدت) ---
+    dist_sma99_atr = (c - sma99) / atr_val if atr_val > 0 else 0.0
+    not_overextended_bull = dist_sma99_atr <= MAX_DIST_SMA99_ATR
+    not_overextended_bear = (-dist_sma99_atr) <= MAX_DIST_SMA99_ATR
+
+    # --- 3) واگرایی RSI ---
+    no_bearish_div = True
+    no_bullish_div = True
+    if idx - DIV_LOOKBACK >= 0:
+        prev_highs_div = highs[idx - DIV_LOOKBACK: idx]
+        prev_rsi_div = rsi_series[idx - DIV_LOOKBACK: idx]
+        prev_lows_div = lows[idx - DIV_LOOKBACK: idx]
+
+        if all(v is not None for v in prev_rsi_div) and rsi_value is not None:
+            recent_higher_high = h > max(prev_highs_div)
+            rsi_lower_high = rsi_value < max(prev_rsi_div)
+            bearish_rsi_div = recent_higher_high and rsi_lower_high
+            no_bearish_div = not bearish_rsi_div
+
+            recent_lower_low = l < min(prev_lows_div)
+            rsi_higher_low = rsi_value > min(prev_rsi_div)
+            bullish_rsi_div = recent_lower_low and rsi_higher_low
+            no_bullish_div = not bullish_rsi_div
+
+    # --- 4) افت مومنتوم SMA25 ---
+    not_fading = True
+    if idx - 2 * MOMENTUM_FADE_LOOKBACK >= 0:
+        sma25_now = sma25_series[idx]
+        sma25_prev1 = sma25_series[idx - MOMENTUM_FADE_LOOKBACK]
+        sma25_prev2 = sma25_series[idx - 2 * MOMENTUM_FADE_LOOKBACK]
+        close_prev1 = closes[idx - MOMENTUM_FADE_LOOKBACK]
+
+        if sma25_now is not None and sma25_prev1 is not None and sma25_prev2 is not None:
+            dist_now = abs(c - sma25_now)
+            dist_prev1 = abs(close_prev1 - sma25_prev1)
+            dist_shrinking = dist_now < dist_prev1
+
+            slope_now = sma25_now - sma25_prev1
+            slope_prev = sma25_prev1 - sma25_prev2
+            slope_not_accelerating = abs(slope_now) <= abs(slope_prev)
+
+            momentum_fading = dist_shrinking and slope_not_accelerating
+            not_fading = not momentum_fading
+
+    # --- 5) MFI Overbought/Oversold ---
+    mfi_val = mfi_values[idx]
+    mfi_not_overbought = mfi_val is None or mfi_val < MFI_OVERBOUGHT
+    mfi_not_oversold = mfi_val is None or mfi_val > MFI_OVERSOLD
+
+    exhaustion_ok_bull_base = (
+        (not USE_ADX_ROLLOVER_FILTER or adx_rising_bull)
+        and (not USE_SMA99_OVEREXT_FILTER or not_overextended_bull)
+        and (not USE_RSI_DIV_FILTER or no_bearish_div)
+        and (not USE_MOMENTUM_FADE_FILTER or not_fading)
+        and (not USE_MFI_FILTER or mfi_not_overbought)
+    )
+    exhaustion_ok_bear_base = (
+        (not USE_ADX_ROLLOVER_FILTER or adx_rising_bear)
+        and (not USE_SMA99_OVEREXT_FILTER or not_overextended_bear)
+        and (not USE_RSI_DIV_FILTER or no_bullish_div)
+        and (not USE_MOMENTUM_FADE_FILTER or not_fading)
+        and (not USE_MFI_FILTER or mfi_not_oversold)
+    )
+
+    # ==================== افت هیستوگرام MACD (فیلتر ورود + سیگنال خروج) ====================
+    macd_fade_bull = False
+    macd_fade_bear = False
+
+    if idx - MACD_EXIT_LOOKBACK + 1 >= 0:
+        window = macd_hist_series[idx - MACD_EXIT_LOOKBACK + 1: idx + 1]
+        if all(v is not None for v in window):
+            pos_count = sum(1 for v in window if v > 0)
+            neg_count = sum(1 for v in window if v < 0)
+            side_needed = round(MACD_EXIT_LOOKBACK * MACD_EXIT_SIDE_PCT / 100)
+
+            macd_hist_mostly_pos = pos_count >= side_needed
+            macd_hist_mostly_neg = neg_count >= side_needed
+
+            macd_hist_falling = is_falling(macd_hist_series, idx, MACD_EXIT_LOOKBACK)
+            macd_hist_rising = is_rising(macd_hist_series, idx, MACD_EXIT_LOOKBACK)
+
+            macd_fade_bull = macd_hist_mostly_pos and macd_hist_falling
+            macd_fade_bear = macd_hist_mostly_neg and macd_hist_rising
+
+    exhaustion_ok_bull = exhaustion_ok_bull_base and (not USE_MACD_EXIT_SIGNAL or not macd_fade_bull)
+    exhaustion_ok_bear = exhaustion_ok_bear_base and (not USE_MACD_EXIT_SIGNAL or not macd_fade_bear)
+
+    # ==================== فیلتر حجم (اختیاری، پیش‌فرض خاموش) ====================
+    volume_ok = (
+        (not USE_VOLUME_FILTER)
+        or (idx >= 1 and volumes[idx] < volumes[idx - 1] * VOLUME_DECLINE_MULT)
+    )
+
+    # ==================== ترکیب نهایی سیگنال ورود ====================
     bullish_condition = (
         bullish_shape and sma_stack_bull and above_all_sma
         and near_sma7 and not body_crosses_sma7 and is_trending_bull
+        and volume_ok and exhaustion_ok_bull
     )
     bearish_condition = (
         bearish_shape and sma_stack_bear and below_all_sma
         and near_sma7 and not body_crosses_sma7 and is_trending_bear
+        and volume_ok and exhaustion_ok_bear
     )
+
+    # همون کندلی که اگه افت MACD نبود سیگنال می‌داد، ولی فقط به‌خاطر
+    # افت هیستوگرام MACD حذف شد -- این یعنی می‌شه یه هشدار "خروج"
+    # برای پوزیشن‌های باز صادر کرد (نه یه سیگنال ورود جدید)
+    would_be_bullish = (
+        bullish_shape and sma_stack_bull and above_all_sma
+        and near_sma7 and not body_crosses_sma7 and is_trending_bull
+        and volume_ok and exhaustion_ok_bull_base
+    )
+    would_be_bearish = (
+        bearish_shape and sma_stack_bear and below_all_sma
+        and near_sma7 and not body_crosses_sma7 and is_trending_bear
+        and volume_ok and exhaustion_ok_bear_base
+    )
+
+    exit_long_signal = USE_MACD_EXIT_SIGNAL and would_be_bullish and macd_fade_bull
+    exit_short_signal = USE_MACD_EXIT_SIGNAL and would_be_bearish and macd_fade_bear
 
     if bullish_condition:
         signal = "bullish"
     elif bearish_condition:
         signal = "bearish"
+    elif exit_long_signal:
+        signal = "exit_long"
+    elif exit_short_signal:
+        signal = "exit_short"
     else:
         return None
 
+    # سیگنال‌های خروج فقط هشدار فرسودگی روند برای پوزیشن‌های باز هستن؛
+    # نیازی به تایید هم‌جهتی با تایم‌فریم بالاتر ندارن (چون ورود جدیدی
+    # در کار نیست) -- فقط سیگنال‌های ورود (bullish/bearish) این فیلتر
+    # رو رد می‌کنن.
     htf_confirm = None
     htf_timeframe_used = None
 
-    if USE_HTF_CONFIRM:
+    if USE_HTF_CONFIRM and signal in ("bullish", "bearish"):
         htf_timeframe_used = get_htf_timeframe(timeframe)
         htf_stack = get_htf_sma_stack(symbol, htf_timeframe_used, source)
 
@@ -1132,9 +1419,9 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
             htf_stack_bull, htf_stack_bear = htf_stack
             htf_confirm = htf_stack_bull if signal == "bullish" else htf_stack_bear
 
-        # === تغییر درخواستی: سیگنال‌های "زرد" (ناهم‌جهت با HTF) و
-        # سیگنال‌هایی که هم‌جهتی‌شون قابل تشخیص نبوده (htf_confirm=None،
-        # یعنی داده‌ی HTF ناکافی) کلاً حذف میشن و اصلاً فرستاده نمیشن. ===
+        # === سیگنال‌های "زرد" (ناهم‌جهت با HTF) و سیگنال‌هایی که
+        # هم‌جهتی‌شون قابل تشخیص نبوده (htf_confirm=None، یعنی داده‌ی
+        # HTF ناکافی) کلاً حذف میشن و اصلاً فرستاده نمیشن. ===
         if htf_confirm is not True:
             return None
 
@@ -1145,6 +1432,9 @@ def evaluate_symbol(symbol: str, timeframe: str, source: str):
         "signal": signal,
         "htf_confirm": htf_confirm,
         "htf_timeframe": htf_timeframe_used,
+        "mfi_value": mfi_val,
+        "dist_sma99_atr": dist_sma99_atr,
+        "macd_hist": macd_hist_series[idx],
         "candle_open_ms": open_times[idx],
         "candle_close_ms": close_times[idx],
         "close_price": c,
@@ -1224,6 +1514,44 @@ def send_telegram(text: str):
             time.sleep(min(2 ** attempt, 10))
 
     print("[TELEGRAM ERROR] ارسال پیام بعد از چند تلاش شکست خورد.")
+
+
+def build_exit_message(symbol, timeframe, result, source):
+    """
+    پیام هشدار «خروج» بر اساس افت هیستوگرام MACD (Trend Fatigue).
+    این یه سیگنال ورود جدید نیست -- فقط هشدار می‌ده که مومنتوم روند
+    فعلی داره افت می‌کنه، برای کسایی که پوزیشن باز دارن.
+    """
+    is_long_exit = result["signal"] == "exit_long"
+    emoji = "🟡" if is_long_exit else "🟣"
+    label = "EXIT LONG (افت مومنتوم MACD)" if is_long_exit else "EXIT SHORT (افت مومنتوم MACD)"
+
+    rsi_value = result["rsi_value"]
+    rsi_str = "?" if rsi_value is None else f"{rsi_value:.1f}"
+    adx_str = "?" if result["adx_value"] is None else f"{result['adx_value']:.1f}"
+    macd_hist_val = result.get("macd_hist")
+    macd_hist_str = "?" if macd_hist_val is None else f"{macd_hist_val:.5f}"
+
+    tv_link = tradingview_link(symbol, timeframe, source)
+
+    close_utc = datetime.fromtimestamp(result["candle_close_ms"] / 1000, tz=timezone.utc)
+    close_tehran = close_utc + TEHRAN_OFFSET
+    time_line = (
+        f"🕒 {close_utc.strftime('%Y-%m-%d %H:%M')} UTC | "
+        f"{close_tehran.strftime('%H:%M')} (+3:30)"
+    )
+
+    msg = (
+        f"{emoji} <b>{label}</b> #{symbol}\n\n"
+        f"⏱️ {timeframe} | RSI {rsi_str} | ADX {adx_str} | MACD-Hist {macd_hist_str}\n"
+        f"💰 {result['close_price']}\n\n"
+        f"⚠️ هیستوگرام MACD به‌طور پیوسته در حال افته -- احتمال فرسودگی روند "
+        f"فعلی. این هشدار برای پوزیشن‌های بازه، نه سیگنال ورود جدید.\n\n"
+        f"🔗 {tv_link}\n\n"
+        f"{time_line}"
+    )
+
+    return msg
 
 
 def build_symbol_message(symbol, tf_results, source):
@@ -1378,13 +1706,15 @@ def main():
 
     bullish_count = 0
     bearish_count = 0
+    exit_long_count = 0
+    exit_short_count = 0
     duplicate_skipped = 0
     messages_sent = 0
 
     for symbol in symbols:
 
         source = source_map[symbol]
-        tf_results = []
+        entry_tf_results = []
 
         for timeframe in TIMEFRAMES:
 
@@ -1392,24 +1722,42 @@ def main():
             if not result:
                 continue
 
-            key = f"{symbol}_{timeframe}"
+            is_exit = result["signal"] in ("exit_long", "exit_short")
+            # کلید دوپلیکیت برای سیگنال‌های خروج جدا از وروده تا با هم تداخل نکنن
+            key = f"{symbol}_{timeframe}_{result['signal']}" if is_exit else f"{symbol}_{timeframe}"
 
             if state.get(key) == result["candle_open_ms"]:
                 duplicate_skipped += 1
                 print(
-                    f"[SKIP-DUP] {symbol} {timeframe}: "
+                    f"[SKIP-DUP] {symbol} {timeframe} ({result['signal']}): "
                     f"سیگنال تکراریه (قبلاً روی همین کندل فرستاده شده)"
                 )
                 continue
 
-            tf_results.append((timeframe, result))
+            state[key] = result["candle_open_ms"]
+
+            if is_exit:
+                if result["signal"] == "exit_long":
+                    exit_long_count += 1
+                else:
+                    exit_short_count += 1
+
+                print(
+                    f"[EXIT-SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
+                    f"(افت هیستوگرام MACD، RSI={result['rsi_value']}, ADX={result['adx_value']})"
+                )
+
+                msg = build_exit_message(symbol, timeframe, result, source)
+                send_telegram(msg)
+                messages_sent += 1
+                continue
+
+            entry_tf_results.append((timeframe, result))
 
             if result["signal"] == "bullish":
                 bullish_count += 1
             else:
                 bearish_count += 1
-
-            state[key] = result["candle_open_ms"]
 
             print(
                 f"[SIGNAL] {symbol} ({source}) {timeframe}: {result['signal']} "
@@ -1418,14 +1766,15 @@ def main():
                 f"DI-diff={result['di_diff']:.2f}, Chop={result['choppiness']:.1f})"
             )
 
-        if tf_results:
-            msg = build_symbol_message(symbol, tf_results, source)
+        if entry_tf_results:
+            msg = build_symbol_message(symbol, entry_tf_results, source)
             send_telegram(msg)
             messages_sent += 1
 
     save_state(state)
 
     total_signals = bullish_count + bearish_count
+    total_exits = exit_long_count + exit_short_count
     finish_time_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     summary_msg = (
@@ -1433,8 +1782,10 @@ def main():
         f"🕒 {finish_time_str}\n"
         f"⏱ زمان اسکن: {scan_elapsed:.1f} ثانیه\n"
         f"پیام‌های ارسال‌شده: <b>{messages_sent}</b>\n"
-        f"مجموع سیگنال‌های جدید (فقط هم‌جهت با HTF): <b>{total_signals}</b> "
+        f"مجموع سیگنال‌های ورود جدید (فقط هم‌جهت با HTF): <b>{total_signals}</b> "
         f"(🟢 {bullish_count} #long / 🔴 {bearish_count} #short)\n"
+        f"هشدارهای خروج (افت MACD): <b>{total_exits}</b> "
+        f"(🟡 {exit_long_count} exit-long / 🟣 {exit_short_count} exit-short)\n"
         f"تکراری نادیده‌گرفته‌شده: {duplicate_skipped}"
     )
 
